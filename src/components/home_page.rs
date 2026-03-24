@@ -37,6 +37,7 @@ pub fn HomePage() -> impl IntoView {
     let turnstile_site_key = RwSignal::new(read_turnstile_site_key());
     let turnstile_mount = NodeRef::<Div>::new();
     let turnstile_rendered = RwSignal::new(false);
+    let turnstile_widget_id = RwSignal::new(None::<String>);
     let turnstile_script_state = RwSignal::new(TurnstileScriptState::Idle);
     let status_booted = RwSignal::new(false);
     #[cfg(not(target_arch = "wasm32"))]
@@ -44,6 +45,7 @@ pub fn HomePage() -> impl IntoView {
         turnstile_site_key,
         entry_pass_in_flight,
         turnstile_rendered,
+        turnstile_widget_id,
         turnstile_script_state,
         status_booted,
     );
@@ -62,6 +64,8 @@ pub fn HomePage() -> impl IntoView {
         let entry_granted = entry_granted;
         let turnstile_token = turnstile_token;
         let turnstile_ready = turnstile_ready;
+        let turnstile_mount = turnstile_mount;
+        let turnstile_widget_id = turnstile_widget_id;
 
         move |regenerate: bool| {
             if in_flight.get_untracked() {
@@ -128,7 +132,7 @@ pub fn HomePage() -> impl IntoView {
                                 entry_granted.set(false);
                                 turnstile_token.set(None);
                                 turnstile_ready.set(false);
-                                reset_turnstile_widget();
+                                reset_turnstile_widget(turnstile_widget_id, turnstile_mount);
                             }
                         }
                     }
@@ -272,6 +276,7 @@ pub fn HomePage() -> impl IntoView {
         let entry_granted = entry_granted;
         let error = error;
         let turnstile_rendered = turnstile_rendered;
+        let turnstile_widget_id = turnstile_widget_id;
         let turnstile_script_state = turnstile_script_state;
 
         move || {
@@ -293,6 +298,7 @@ pub fn HomePage() -> impl IntoView {
             if render_turnstile_widget(
                 container.into(),
                 site_key,
+                turnstile_widget_id,
                 turnstile_token,
                 turnstile_ready,
                 error,
@@ -311,6 +317,8 @@ pub fn HomePage() -> impl IntoView {
         let entry_loading = entry_loading;
         let entry_pass_in_flight = entry_pass_in_flight;
         let turnstile_rendered = turnstile_rendered;
+        let turnstile_widget_id = turnstile_widget_id;
+        let turnstile_mount = turnstile_mount;
         let usage = usage;
         let error = error;
 
@@ -343,7 +351,7 @@ pub fn HomePage() -> impl IntoView {
                         turnstile_token.set(None);
                         turnstile_ready.set(false);
                         turnstile_rendered.set(false);
-                        reset_turnstile_widget();
+                        reset_turnstile_widget(turnstile_widget_id, turnstile_mount);
                         error.set(Some(message));
                     }
                 }
@@ -404,6 +412,10 @@ pub fn HomePage() -> impl IntoView {
                                                 turnstile_rendered.set(false);
                                                 turnstile_ready.set(false);
                                                 turnstile_token.set(None);
+                                                reset_turnstile_widget(
+                                                    turnstile_widget_id,
+                                                    turnstile_mount,
+                                                );
                                                 turnstile_script_state.set(TurnstileScriptState::Idle);
                                                 error.set(None);
                                             }
@@ -955,6 +967,7 @@ fn js_client_error(error: wasm_bindgen::JsValue) -> ErrorEnvelope {
 fn render_turnstile_widget(
     container: web_sys::HtmlElement,
     site_key: String,
+    widget_id_signal: RwSignal<Option<String>>,
     token_signal: RwSignal<Option<String>>,
     ready_signal: RwSignal<bool>,
     error_signal: RwSignal<Option<String>>,
@@ -987,6 +1000,7 @@ fn render_turnstile_widget(
         &JsValue::from_str("theme"),
         &JsValue::from_str("light"),
     );
+    container.set_inner_html("");
 
     let success = Closure::<dyn FnMut(JsValue)>::wrap(Box::new(move |token: JsValue| {
         token_signal.set(token.as_string());
@@ -1025,31 +1039,68 @@ fn render_turnstile_widget(
     );
     errored.forget();
 
-    let _ = render.call2(&turnstile, container.as_ref(), &options);
-    true
+    match render.call2(&turnstile, container.as_ref(), &options) {
+        Ok(widget_id) => {
+            widget_id_signal.set(
+                widget_id
+                    .as_string()
+                    .or_else(|| widget_id.as_f64().map(|id| id.to_string())),
+            );
+            true
+        }
+        Err(_) => false,
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
-fn reset_turnstile_widget() {
+fn reset_turnstile_widget(
+    widget_id_signal: RwSignal<Option<String>>,
+    turnstile_mount: NodeRef<Div>,
+) {
     use wasm_bindgen::{JsCast, JsValue};
 
     let Some(window) = web_sys::window() else {
+        widget_id_signal.set(None);
+        if let Some(container) = turnstile_mount.get() {
+            container.set_inner_html("");
+        }
         return;
     };
     let Ok(turnstile) = js_sys::Reflect::get(&window, &JsValue::from_str("turnstile")) else {
+        widget_id_signal.set(None);
+        if let Some(container) = turnstile_mount.get() {
+            container.set_inner_html("");
+        }
         return;
     };
     if turnstile.is_undefined() || turnstile.is_null() {
+        widget_id_signal.set(None);
+        if let Some(container) = turnstile_mount.get() {
+            container.set_inner_html("");
+        }
         return;
     }
-    let Ok(reset_value) = js_sys::Reflect::get(&turnstile, &JsValue::from_str("reset")) else {
-        return;
-    };
-    let Ok(reset) = reset_value.dyn_into::<js_sys::Function>() else {
-        return;
-    };
-    let _ = reset.call0(&turnstile);
+    if let Some(widget_id) = widget_id_signal.get_untracked() {
+        if let Ok(reset_value) = js_sys::Reflect::get(&turnstile, &JsValue::from_str("reset")) {
+            if let Ok(reset) = reset_value.dyn_into::<js_sys::Function>() {
+                let _ = reset.call1(&turnstile, &JsValue::from_str(&widget_id));
+            }
+        }
+        if let Ok(remove_value) = js_sys::Reflect::get(&turnstile, &JsValue::from_str("remove")) {
+            if let Ok(remove) = remove_value.dyn_into::<js_sys::Function>() {
+                let _ = remove.call1(&turnstile, &JsValue::from_str(&widget_id));
+            }
+        }
+    }
+    widget_id_signal.set(None);
+    if let Some(container) = turnstile_mount.get() {
+        container.set_inner_html("");
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn reset_turnstile_widget() {}
+fn reset_turnstile_widget(
+    _widget_id_signal: RwSignal<Option<String>>,
+    _turnstile_mount: NodeRef<Div>,
+) {
+}
