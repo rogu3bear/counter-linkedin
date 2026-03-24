@@ -19,9 +19,9 @@ cargo install -q "worker-build@^0.7"
 worker-build --release --features ssr
 
 # worker-build's recovery path may call __wbindgen_start() even when the
-# generated server wasm doesn't export it. Guard that call so production
-# requests don't crash during worker reinitialization.
-perl -0pi -e 's/s\.__wbindgen_start\(\)/s.__wbindgen_start&&s.__wbindgen_start()/g' "$ROOT_DIR/build/index.js"
+# generated server wasm doesn't export it. Guard any direct receiver call so
+# production requests don't crash during worker reinitialization.
+perl -0pi -e 's/([[:alpha:]_][[:alnum:]_]*)\.__wbindgen_start\(\)/$1.__wbindgen_start&&$1.__wbindgen_start()/g' "$ROOT_DIR/build/index.js"
 
 rm -rf "$PKG_DIR"
 mkdir -p "$SITE_DIR"
