@@ -24,7 +24,6 @@ pub fn shell(options: LeptosOptions, turnstile_site_key: Option<String>) -> impl
                 {turnstile_site_key.clone().map(|site_key| view! {
                     <>
                         <meta name="turnstile-site-key" content=site_key.clone()/>
-                        <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" defer></script>
                     </>
                 })}
                 <link rel="modulepreload" href=format!("/pkg/{}", asset_manifest::JS_FILE)/>

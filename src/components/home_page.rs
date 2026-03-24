@@ -7,6 +7,15 @@ use crate::api::{
     UsageSummary,
 };
 
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TurnstileScriptState {
+    Idle,
+    Loading,
+    Ready,
+    Failed,
+}
+
 #[component]
 pub fn HomePage() -> impl IntoView {
     let mode = RwSignal::new(TranslationMode::LinkedinToCounterLinkedin);
@@ -28,12 +37,14 @@ pub fn HomePage() -> impl IntoView {
     let turnstile_site_key = RwSignal::new(read_turnstile_site_key());
     let turnstile_mount = NodeRef::<Div>::new();
     let turnstile_rendered = RwSignal::new(false);
+    let turnstile_script_state = RwSignal::new(TurnstileScriptState::Idle);
     let status_booted = RwSignal::new(false);
     #[cfg(not(target_arch = "wasm32"))]
     let _ = (
         turnstile_site_key,
         entry_pass_in_flight,
         turnstile_rendered,
+        turnstile_script_state,
         status_booted,
     );
 
@@ -215,6 +226,45 @@ pub fn HomePage() -> impl IntoView {
     #[cfg(target_arch = "wasm32")]
     Effect::new({
         let turnstile_site_key = turnstile_site_key;
+        let turnstile_script_state = turnstile_script_state;
+        let entry_required = entry_required;
+        let entry_granted = entry_granted;
+        let error = error;
+
+        move || {
+            if !entry_required.get() || entry_granted.get() {
+                return;
+            }
+
+            if !matches!(
+                turnstile_script_state.get(),
+                TurnstileScriptState::Idle | TurnstileScriptState::Failed
+            ) {
+                return;
+            }
+
+            let Some(site_key) = turnstile_site_key.get() else {
+                error.set(Some("Human check is unavailable right now.".to_string()));
+                turnstile_script_state.set(TurnstileScriptState::Failed);
+                return;
+            };
+
+            turnstile_script_state.set(TurnstileScriptState::Loading);
+
+            if ensure_turnstile_script(site_key, turnstile_script_state, error) {
+                return;
+            }
+
+            turnstile_script_state.set(TurnstileScriptState::Failed);
+            error.set(Some(
+                "Human check failed to load. Retry to request the widget again.".to_string(),
+            ));
+        }
+    });
+
+    #[cfg(target_arch = "wasm32")]
+    Effect::new({
+        let turnstile_site_key = turnstile_site_key;
         let turnstile_mount = turnstile_mount;
         let turnstile_token = turnstile_token;
         let turnstile_ready = turnstile_ready;
@@ -222,9 +272,14 @@ pub fn HomePage() -> impl IntoView {
         let entry_granted = entry_granted;
         let error = error;
         let turnstile_rendered = turnstile_rendered;
+        let turnstile_script_state = turnstile_script_state;
 
         move || {
-            if !entry_required.get() || entry_granted.get() || turnstile_rendered.get() {
+            if !entry_required.get()
+                || entry_granted.get()
+                || turnstile_rendered.get()
+                || turnstile_script_state.get() != TurnstileScriptState::Ready
+            {
                 return;
             }
 
@@ -255,6 +310,7 @@ pub fn HomePage() -> impl IntoView {
         let entry_granted = entry_granted;
         let entry_loading = entry_loading;
         let entry_pass_in_flight = entry_pass_in_flight;
+        let turnstile_rendered = turnstile_rendered;
         let usage = usage;
         let error = error;
 
@@ -286,6 +342,7 @@ pub fn HomePage() -> impl IntoView {
                     Err(message) => {
                         turnstile_token.set(None);
                         turnstile_ready.set(false);
+                        turnstile_rendered.set(false);
                         reset_turnstile_widget();
                         error.set(Some(message));
                     }
@@ -331,7 +388,41 @@ pub fn HomePage() -> impl IntoView {
                         "Pass it once when you enter. The pre-generate interruption is gone."
                     </p>
                     <div node_ref=turnstile_mount class="entry-gate__widget"></div>
-                    <Show when=move || entry_loading.get()>
+                    <Show
+                        when=move || entry_loading.get()
+                        fallback=move || {
+                            if turnstile_script_state.get() == TurnstileScriptState::Failed {
+                                view! {
+                                    <div class="entry-gate__actions">
+                                        <p class="entry-gate__note">
+                                            "Human check failed to load. Retry to request it again."
+                                        </p>
+                                        <button
+                                            class="ghost-action ghost-action--quiet"
+                                            type="button"
+                                            on:click=move |_| {
+                                                turnstile_rendered.set(false);
+                                                turnstile_ready.set(false);
+                                                turnstile_token.set(None);
+                                                turnstile_script_state.set(TurnstileScriptState::Idle);
+                                                error.set(None);
+                                            }
+                                        >
+                                            "Retry"
+                                        </button>
+                                    </div>
+                                }
+                                    .into_any()
+                            } else {
+                                view! {
+                                    <Show when=move || error.get().is_some()>
+                                        <p class="entry-gate__note">{move || error.get().unwrap_or_default()}</p>
+                                    </Show>
+                                }
+                                    .into_any()
+                            }
+                        }
+                    >
                         <p class="entry-gate__note">"Checking access..."</p>
                     </Show>
                 </div>
@@ -772,6 +863,81 @@ fn read_turnstile_site_key() -> Option<String> {
     {
         None
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn ensure_turnstile_script(
+    site_key: String,
+    script_state: RwSignal<TurnstileScriptState>,
+    error_signal: RwSignal<Option<String>>,
+) -> bool {
+    use wasm_bindgen::{closure::Closure, JsCast, JsValue};
+
+    const TURNSTILE_SCRIPT_ID: &str = "counterlinkedin-turnstile-script";
+    const TURNSTILE_SCRIPT_SRC: &str =
+        "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+
+    let Some(window) = web_sys::window() else {
+        return false;
+    };
+    let Some(document) = window.document() else {
+        return false;
+    };
+    let Some(head) = document.head() else {
+        return false;
+    };
+
+    let _ = site_key;
+
+    if js_sys::Reflect::get(&window, &JsValue::from_str("turnstile"))
+        .map(|value| !value.is_undefined() && !value.is_null())
+        .unwrap_or(false)
+    {
+        script_state.set(TurnstileScriptState::Ready);
+        error_signal.set(None);
+        return true;
+    }
+
+    if let Some(existing) = document.get_element_by_id(TURNSTILE_SCRIPT_ID) {
+        if existing.get_attribute("data-ready").as_deref() == Some("true") {
+            script_state.set(TurnstileScriptState::Ready);
+            error_signal.set(None);
+        }
+        return true;
+    }
+
+    let Ok(element) = document.create_element("script") else {
+        return false;
+    };
+    let Ok(script) = element.dyn_into::<web_sys::HtmlScriptElement>() else {
+        return false;
+    };
+
+    script.set_id(TURNSTILE_SCRIPT_ID);
+    script.set_src(TURNSTILE_SCRIPT_SRC);
+    script.set_defer(true);
+
+    let onload_script = script.clone();
+    let onload = Closure::<dyn FnMut()>::wrap(Box::new(move || {
+        onload_script.set_attribute("data-ready", "true").ok();
+        script_state.set(TurnstileScriptState::Ready);
+        error_signal.set(None);
+    }));
+    script.set_onload(Some(onload.as_ref().unchecked_ref()));
+    onload.forget();
+
+    let onerror_script = script.clone();
+    let onerror = Closure::<dyn FnMut()>::wrap(Box::new(move || {
+        onerror_script.remove();
+        script_state.set(TurnstileScriptState::Failed);
+        error_signal.set(Some(
+            "Human check failed to load. Retry to request it again.".to_string(),
+        ));
+    }));
+    script.set_onerror(Some(onerror.as_ref().unchecked_ref()));
+    onerror.forget();
+
+    head.append_child(&script).is_ok()
 }
 
 fn client_error(message: impl Into<String>) -> ErrorEnvelope {
