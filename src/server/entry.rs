@@ -18,12 +18,15 @@ const ENTRY_COOKIE_NAME: &str = "counterlinkedin_entry";
 const ENTRY_COOKIE_MAX_AGE_SECS: u64 = 60 * 60 * 24 * 7;
 
 pub async fn status(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    let client_ip = client_ip(&headers);
+    send_wrapper::SendWrapper::new(async move {
+        let client_ip = client_ip(&headers);
 
-    match build_status(&state, &headers, &client_ip).await {
-        Ok(status) => Json(status).into_response(),
-        Err(error) => error_response(error),
-    }
+        match build_status(&state, &headers, &client_ip).await {
+            Ok(status) => Json(status).into_response(),
+            Err(error) => error_response(error),
+        }
+    })
+    .await
 }
 
 pub async fn pass(
@@ -31,33 +34,36 @@ pub async fn pass(
     headers: HeaderMap,
     Json(payload): Json<EntryPassRequest>,
 ) -> Response {
-    let client_ip = client_ip(&headers);
+    send_wrapper::SendWrapper::new(async move {
+        let client_ip = client_ip(&headers);
 
-    if state.turnstile_secret_present() {
-        if payload.turnstile_token.trim().is_empty() {
-            return error_response(ApiError::human_check_required(
-                "Finish the entry check first.",
-            ));
+        if state.turnstile_secret_present() {
+            if payload.turnstile_token.trim().is_empty() {
+                return error_response(ApiError::human_check_required(
+                    "Finish the entry check first.",
+                ));
+            }
+
+            if let Err(error) =
+                verify_turnstile(&state, payload.turnstile_token.trim(), &client_ip).await
+            {
+                return error_response(error);
+            }
         }
 
-        if let Err(error) =
-            verify_turnstile(&state, payload.turnstile_token.trim(), &client_ip).await
-        {
-            return error_response(error);
+        match build_status(&state, &headers, &client_ip).await {
+            Ok(mut status) => {
+                status.entry_granted = true;
+                (
+                    [(header::SET_COOKIE, entry_cookie(&state, &client_ip))],
+                    Json(status),
+                )
+                    .into_response()
+            }
+            Err(error) => error_response(error),
         }
-    }
-
-    match build_status(&state, &headers, &client_ip).await {
-        Ok(mut status) => {
-            status.entry_granted = true;
-            (
-                [(header::SET_COOKIE, entry_cookie(&state, &client_ip))],
-                Json(status),
-            )
-                .into_response()
-        }
-        Err(error) => error_response(error),
-    }
+    })
+    .await
 }
 
 pub fn has_entry_pass(headers: &HeaderMap, state: &AppState, client_ip: &str) -> bool {
@@ -166,7 +172,7 @@ async fn verify_turnstile(state: &AppState, token: &str, client_ip: &str) -> Res
         .set("Content-Type", "application/x-www-form-urlencoded")
         .map_err(|error| ApiError::internal(format!("Turnstile headers failed: {error}")))?;
 
-    let body = params.to_string();
+    let body = params.to_string().as_string().unwrap_or_default();
     let mut init = RequestInit::new();
     init.with_method(Method::Post);
     init.with_headers(headers);
@@ -185,7 +191,7 @@ async fn verify_turnstile(state: &AppState, token: &str, client_ip: &str) -> Res
         error_codes: Vec<String>,
     }
 
-    let response = Fetch::Request(request)
+    let mut response = Fetch::Request(request)
         .send()
         .await
         .map_err(|error| ApiError::internal(format!("Turnstile fetch failed: {error}")))?;

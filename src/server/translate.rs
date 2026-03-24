@@ -260,7 +260,7 @@ async fn translate_inner(
     let _ = analytics::log_generation(
         &state,
         analytics::GenerationLog {
-            client_ip,
+            client_ip: client_ip.clone(),
             host,
             route: "/api/translate".to_string(),
             mode: Some(request.mode),
