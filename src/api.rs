@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_MODEL: &str = "@cf/meta/llama-3.1-8b-instruct";
 pub const MAX_INPUT_CHARS: usize = 4_000;
-pub const MAX_OUTPUT_CHARS: usize = 640;
-pub const MAX_OUTPUT_TOKENS: u16 = 220;
+pub const MAX_OUTPUT_CHARS: usize = 1_280;
+pub const MAX_OUTPUT_TOKENS: u16 = 360;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
 #[serde(rename_all = "snake_case")]
@@ -293,7 +293,8 @@ pub fn build_prompt(request: &TranslationRequest) -> PromptBundle {
                 "No profanity.\n",
                 "Return only the rewritten text.\n",
                 "No intro sentence. Start directly with the post.\n",
-                "Aim for 1-4 short lines.\n",
+                "Aim for 1-2 short paragraphs.\n",
+                "Usually 2-6 sentences total.\n",
                 "Source:\n{input}"
             ),
             regenerate_note = regenerate_note,
@@ -305,7 +306,8 @@ pub fn build_prompt(request: &TranslationRequest) -> PromptBundle {
                 "{regenerate_note}\n",
                 "Return only the cleaned-up version.\n",
                 "No intro sentence. Start directly with the rewrite.\n",
-                "Aim for 1-3 crisp sentences.\n",
+                "Aim for 1-2 short paragraphs.\n",
+                "Usually 2-5 crisp sentences total.\n",
                 "Source:\n{input}"
             ),
             regenerate_note = regenerate_note,
@@ -317,7 +319,8 @@ pub fn build_prompt(request: &TranslationRequest) -> PromptBundle {
                 "{regenerate_note}\n",
                 "Return only the honest translation.\n",
                 "No intro sentence. Start directly with the translation.\n",
-                "Aim for 2-6 compact lines.\n",
+                "Aim for 1-2 short paragraphs.\n",
+                "Usually 3-7 compact sentences total.\n",
                 "Source:\n{input}"
             ),
             regenerate_note = regenerate_note,
@@ -340,8 +343,9 @@ pub fn sanitize_output(raw: &str) -> (String, bool) {
         .trim_matches('\'')
         .replace("\r\n", "\n");
     let trimmed = strip_leading_framing(&trimmed);
+    let (trimmed, paragraph_truncated) = limit_paragraphs(&trimmed, 2);
 
-    let mut truncated = false;
+    let mut truncated = paragraph_truncated;
     let mut output = String::new();
 
     for (index, ch) in trimmed.chars().enumerate() {
@@ -395,6 +399,20 @@ fn strip_leading_framing(text: &str) -> String {
     }
 
     value
+}
+
+fn limit_paragraphs(text: &str, max_paragraphs: usize) -> (String, bool) {
+    let paragraphs = text
+        .split("\n\n")
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+
+    if paragraphs.len() <= max_paragraphs {
+        return (paragraphs.join("\n\n"), false);
+    }
+
+    (paragraphs[..max_paragraphs].join("\n\n"), true)
 }
 
 pub fn intensity_band(intensity: u8) -> &'static str {
@@ -468,5 +486,14 @@ mod tests {
 
         assert!(truncated);
         assert!(output.ends_with("..."));
+    }
+
+    #[test]
+    fn sanitize_output_keeps_only_two_paragraphs() {
+        let source = "first\n\nsecond\n\nthird";
+        let (output, truncated) = sanitize_output(source);
+
+        assert!(truncated);
+        assert_eq!(output, "first\n\nsecond...");
     }
 }
