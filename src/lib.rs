@@ -57,7 +57,8 @@ async fn fetch(
         .route("/api/admin/metrics", get(server::analytics::metrics))
         .leptos_routes_with_context(&state, routes, || {}, {
             let leptos_options = leptos_options.clone();
-            move || app::shell(leptos_options.clone())
+            let turnstile_site_key = state.turnstile_site_key();
+            move || app::shell(leptos_options.clone(), turnstile_site_key.clone())
         })
         .with_state(state);
 

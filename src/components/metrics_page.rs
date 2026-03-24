@@ -50,6 +50,7 @@ fn MetricsDashboard(snapshot: MetricsSnapshot) -> impl IntoView {
         <section class="metrics-grid">
             <MetricCard label="Total requests".to_string() value=summary.total_requests.to_string() detail=format!("{} successes", summary.successful_requests)/>
             <MetricCard label="Estimated spend".to_string() value=format_usd(summary.estimated_total_cost_usd) detail=format!("{} in the last 7 days", format_usd(summary.estimated_cost_last_7d_usd))/>
+            <MetricCard label="24h spend".to_string() value=format_usd(summary.estimated_cost_last_24h_usd) detail=format!("{} requests in the last 24h", summary.requests_last_24h)/>
             <MetricCard label="Average request cost".to_string() value=format_usd(summary.average_cost_per_success_usd) detail=format!("{} today", format_usd(summary.estimated_cost_today_usd))/>
             <MetricCard label="Average latency".to_string() value=format!("{} ms", summary.average_latency_ms.round() as i64) detail=format!("{} requests today", summary.requests_today)/>
             <MetricCard label="Prompt tokens".to_string() value=summary.total_prompt_tokens.to_string() detail=format!("{} completion tokens", summary.total_completion_tokens)/>

@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use leptos::{ev::KeyboardEvent, prelude::*, task::spawn_local};
+use leptos::{ev::KeyboardEvent, html::Div, prelude::*, task::spawn_local};
 
 use crate::api::{ErrorEnvelope, TranslationMode, TranslationRequest, TranslationResponse};
 
@@ -14,6 +14,13 @@ pub fn HomePage() -> impl IntoView {
     let copied = RwSignal::new(false);
     let in_flight = RwSignal::new(false);
     let last_request = RwSignal::new(None::<TranslationRequest>);
+    let turnstile_required = RwSignal::new(false);
+    let turnstile_token = RwSignal::new(None::<String>);
+    let turnstile_ready = RwSignal::new(false);
+    let turnstile_site_key = RwSignal::new(read_turnstile_site_key());
+    let turnstile_mount = NodeRef::<Div>::new();
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = turnstile_site_key;
 
     let submit = Rc::new({
         let mode = mode;
@@ -24,9 +31,18 @@ pub fn HomePage() -> impl IntoView {
         let copied = copied;
         let in_flight = in_flight;
         let last_request = last_request;
+        let turnstile_required = turnstile_required;
+        let turnstile_token = turnstile_token;
+        let turnstile_ready = turnstile_ready;
 
         move |regenerate: bool| {
             if in_flight.get_untracked() {
+                return;
+            }
+
+            let token = turnstile_token.get_untracked();
+            if turnstile_required.get_untracked() && token.as_deref().unwrap_or_default().is_empty() {
+                error.set(Some("Click the human check first.".to_string()));
                 return;
             }
 
@@ -34,6 +50,7 @@ pub fn HomePage() -> impl IntoView {
                 match last_request.get_untracked() {
                     Some(mut request) => {
                         request.regenerate = true;
+                        request.turnstile_token = token;
                         request
                     }
                     None => return,
@@ -44,7 +61,7 @@ pub fn HomePage() -> impl IntoView {
                     mode: mode.get_untracked(),
                     intensity: 70,
                     regenerate: false,
-                    turnstile_token: None,
+                    turnstile_token: token,
                 }
             };
 
@@ -60,6 +77,8 @@ pub fn HomePage() -> impl IntoView {
                 let error = error;
                 let in_flight = in_flight;
                 let last_request = last_request;
+                let turnstile_token = turnstile_token;
+                let turnstile_ready = turnstile_ready;
 
                 async move {
                     match post_translate(request).await {
@@ -70,6 +89,7 @@ pub fn HomePage() -> impl IntoView {
 
                             let mut canonical = request_for_success;
                             canonical.regenerate = false;
+                            canonical.turnstile_token = None;
                             last_request.set(Some(canonical));
                         }
                         Err(envelope) => {
@@ -79,6 +99,11 @@ pub fn HomePage() -> impl IntoView {
                         }
                     }
 
+                    if turnstile_required.get_untracked() {
+                        turnstile_token.set(None);
+                        turnstile_ready.set(false);
+                        reset_turnstile_widget();
+                    }
                     in_flight.set(false);
                 }
             });
@@ -135,6 +160,35 @@ pub fn HomePage() -> impl IntoView {
         }
     });
 
+    #[cfg(target_arch = "wasm32")]
+    Effect::new({
+        let turnstile_site_key = turnstile_site_key;
+        let turnstile_mount = turnstile_mount;
+        let turnstile_token = turnstile_token;
+        let turnstile_ready = turnstile_ready;
+        let error = error;
+
+        move || {
+            let Some(site_key) = turnstile_site_key.get() else {
+                return;
+            };
+            let Some(container) = turnstile_mount.get() else {
+                return;
+            };
+
+            if render_turnstile_widget(
+                container.into(),
+                site_key,
+                turnstile_token,
+                turnstile_ready,
+                error,
+            ) {
+                turnstile_required.set(true);
+                turnstile_site_key.set(None);
+            }
+        }
+    });
+
     view! {
         <main class="translate-page">
             <header class="topbar">
@@ -184,6 +238,15 @@ pub fn HomePage() -> impl IntoView {
                         }
                     />
 
+                    <div class="turnstile-panel">
+                        <div node_ref=turnstile_mount class="turnstile-widget"></div>
+                        <Show when=move || turnstile_required.get()>
+                            <p class="turnstile-note">
+                                "Cloudflare human check required before each run."
+                            </p>
+                        </Show>
+                    </div>
+
                     <div class="pane-actions">
                         <div class="pane-action-group">
                             <button
@@ -200,7 +263,7 @@ pub fn HomePage() -> impl IntoView {
                             <button
                                 class="primary-action"
                                 type="button"
-                                disabled=move || in_flight.get()
+                                disabled=move || in_flight.get() || (turnstile_required.get() && !turnstile_ready.get())
                                 on:click={
                                     let submit = submit.clone();
                                     move |_| submit(false)
@@ -439,6 +502,24 @@ fn normalize_line_endings(text: String) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
+fn read_turnstile_site_key() -> Option<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let window = web_sys::window()?;
+        let document = window.document()?;
+        let meta = document
+            .query_selector("meta[name='turnstile-site-key']")
+            .ok()
+            .flatten()?;
+        meta.get_attribute("content").filter(|value| !value.is_empty())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        None
+    }
+}
+
 fn client_error(message: impl Into<String>) -> ErrorEnvelope {
     ErrorEnvelope {
         error: crate::api::ApiError::internal(message.into()),
@@ -449,3 +530,104 @@ fn client_error(message: impl Into<String>) -> ErrorEnvelope {
 fn js_client_error(error: wasm_bindgen::JsValue) -> ErrorEnvelope {
     client_error(format!("{error:?}"))
 }
+
+#[cfg(target_arch = "wasm32")]
+fn render_turnstile_widget(
+    container: web_sys::HtmlElement,
+    site_key: String,
+    token_signal: RwSignal<Option<String>>,
+    ready_signal: RwSignal<bool>,
+    error_signal: RwSignal<Option<String>>,
+) -> bool {
+    use wasm_bindgen::{closure::Closure, JsCast, JsValue};
+
+    let Ok(window) = web_sys::window().ok_or(()) else {
+        return false;
+    };
+    let turnstile = match js_sys::Reflect::get(&window, &JsValue::from_str("turnstile")) {
+        Ok(value) if !value.is_undefined() && !value.is_null() => value,
+        _ => return false,
+    };
+
+    let Ok(render_value) = js_sys::Reflect::get(&turnstile, &JsValue::from_str("render")) else {
+        return false;
+    };
+    let Ok(render) = render_value.dyn_into::<js_sys::Function>() else {
+        return false;
+    };
+
+    let options = js_sys::Object::new();
+    let _ = js_sys::Reflect::set(
+        &options,
+        &JsValue::from_str("sitekey"),
+        &JsValue::from_str(&site_key),
+    );
+    let _ = js_sys::Reflect::set(
+        &options,
+        &JsValue::from_str("theme"),
+        &JsValue::from_str("light"),
+    );
+
+    let success = Closure::<dyn FnMut(JsValue)>::wrap(Box::new(move |token: JsValue| {
+        token_signal.set(token.as_string());
+        ready_signal.set(true);
+        error_signal.set(None);
+    }));
+    let _ = js_sys::Reflect::set(
+        &options,
+        &JsValue::from_str("callback"),
+        success.as_ref().unchecked_ref(),
+    );
+    success.forget();
+
+    let expired = Closure::<dyn FnMut()>::wrap(Box::new(move || {
+        ready_signal.set(false);
+        token_signal.set(None);
+    }));
+    let _ = js_sys::Reflect::set(
+        &options,
+        &JsValue::from_str("expired-callback"),
+        expired.as_ref().unchecked_ref(),
+    );
+    expired.forget();
+
+    let errored = Closure::<dyn FnMut()>::wrap(Box::new(move || {
+        ready_signal.set(false);
+        token_signal.set(None);
+        error_signal.set(Some("Human check failed to load. Refresh and try again.".to_string()));
+    }));
+    let _ = js_sys::Reflect::set(
+        &options,
+        &JsValue::from_str("error-callback"),
+        errored.as_ref().unchecked_ref(),
+    );
+    errored.forget();
+
+    let _ = render.call2(&turnstile, container.as_ref(), &options);
+    true
+}
+
+#[cfg(target_arch = "wasm32")]
+fn reset_turnstile_widget() {
+    use wasm_bindgen::{JsCast, JsValue};
+
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Ok(turnstile) = js_sys::Reflect::get(&window, &JsValue::from_str("turnstile")) else {
+        return;
+    };
+    if turnstile.is_undefined() || turnstile.is_null() {
+        return;
+    }
+    let Ok(reset_value) = js_sys::Reflect::get(&turnstile, &JsValue::from_str("reset")) else {
+        return;
+    };
+    let Ok(reset) = reset_value.dyn_into::<js_sys::Function>() else {
+        return;
+    };
+    let _ = reset.call0(&turnstile);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn reset_turnstile_widget() {}

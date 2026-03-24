@@ -68,10 +68,11 @@ These vars are used by the Worker:
 - `AI_INPUT_COST_PER_MILLION_USD`: per-million input token price used for spend estimation
 - `AI_OUTPUT_COST_PER_MILLION_USD`: per-million output token price used for spend estimation
 
-Optional secret:
+Security and admin bindings:
 
 - `RATE_LIMIT_SALT`: recommended secret used to hash client IPs before logging
-- `TURNSTILE_SECRET`: not enforced yet, but the server hook is already wired so Turnstile can be added without restructuring the API
+- `TURNSTILE_SITE_KEY`: public site key rendered in the browser for the Cloudflare human check
+- `TURNSTILE_SECRET`: secret used for server-side `siteverify`
 - `ADMIN_USERNAME`: required to protect the metrics dashboard and admin API
 - `ADMIN_PASSWORD`: required to protect the metrics dashboard and admin API
 
@@ -111,10 +112,11 @@ The internal metrics endpoint lives at `/api/admin/metrics` and is intended to b
 Server flow:
 
 1. Validate `mode`, `intensity`, and input length
-2. Apply optional D1-backed rate limiting in [`src/server/rate_limit.rs`](/Users/star/dev/counter-linkedin/src/server/rate_limit.rs)
-3. Build a mode-specific prompt in [`src/api.rs`](/Users/star/dev/counter-linkedin/src/api.rs)
-4. Call the configured Workers AI model through the `AI` binding in [`src/server/translate.rs`](/Users/star/dev/counter-linkedin/src/server/translate.rs)
-5. Return a stable JSON payload:
+2. Apply D1-backed rate limiting in [`src/server/rate_limit.rs`](/Users/star/dev/counter-linkedin/src/server/rate_limit.rs)
+3. Verify the Cloudflare Turnstile token server-side
+4. Build a mode-specific prompt in [`src/api.rs`](/Users/star/dev/counter-linkedin/src/api.rs)
+5. Call the configured Workers AI model through the `AI` binding in [`src/server/translate.rs`](/Users/star/dev/counter-linkedin/src/server/translate.rs)
+6. Return a stable JSON payload:
 
 ```json
 {
@@ -158,7 +160,9 @@ Current controls:
 - input capped at 4,000 characters
 - output trimmed to a compact maximum
 - client disables duplicate submissions while a request is in flight
+- Cloudflare Turnstile human check enforced server-side before generation
 - D1-backed per-IP cooldown and rolling-window throttle
+- hard cap of 25 runs per rolling 24-hour window per client fingerprint
 - regenerate goes through the same throttle path as generate
 
 The main hook points for future abuse controls are:

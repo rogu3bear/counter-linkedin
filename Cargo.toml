@@ -37,12 +37,16 @@ wasm-bindgen = "0.2.105"
 wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = [
   "Clipboard",
+  "Document",
+  "Element",
   "Headers",
+  "HtmlElement",
   "Navigator",
   "Request",
   "RequestInit",
   "RequestMode",
   "Response",
+  "UrlSearchParams",
   "Window",
 ] }
 worker = { version = "0.7.5", features = ["http", "axum", "d1"], optional = true }

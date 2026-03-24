@@ -8,6 +8,8 @@ use super::AppState;
 
 const WINDOW_MINUTES: usize = 10;
 const MAX_REQUESTS_PER_WINDOW: usize = 18;
+const DAY_HOURS: usize = 24;
+const MAX_REQUESTS_PER_DAY: usize = 25;
 const MIN_SECONDS_BETWEEN_REQUESTS: usize = 2;
 
 #[derive(Debug, Deserialize)]
@@ -51,6 +53,33 @@ pub async fn enforce(state: &AppState, client_ip: &str, route: &str) -> Result<(
         let _ = record_event(&db, &fingerprint, route, "window_blocked").await;
         return Err(ApiError::rate_limited(format!(
             "Too many runs in the last {WINDOW_MINUTES} minutes. Give it a minute."
+        )));
+    }
+
+    let daily_count: usize = db
+        .prepare(
+            "SELECT COUNT(*) AS request_count
+             FROM request_events
+             WHERE client_hash = ?1
+               AND route = ?2
+               AND created_at >= datetime('now', ?3)",
+        )
+        .bind_refs(&[
+            D1Type::Text(fingerprint.as_str()),
+            D1Type::Text(route),
+            D1Type::Text("-24 hours"),
+        ])
+        .map_err(|error| ApiError::internal(d1_error(error)))?
+        .first::<CountRow>(None)
+        .await
+        .map_err(|error| ApiError::internal(d1_error(error)))?
+        .map(|row| row.request_count.max(0) as usize)
+        .unwrap_or_default();
+
+    if daily_count >= MAX_REQUESTS_PER_DAY {
+        let _ = record_event(&db, &fingerprint, route, "daily_blocked").await;
+        return Err(ApiError::rate_limited(format!(
+            "Daily cap hit. You get {MAX_REQUESTS_PER_DAY} runs every {DAY_HOURS} hours."
         )));
     }
 

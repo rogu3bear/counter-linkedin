@@ -12,7 +12,7 @@ mod asset_manifest {
 }
 
 #[allow(dead_code)]
-pub fn shell(options: LeptosOptions) -> impl IntoView {
+pub fn shell(options: LeptosOptions, turnstile_site_key: Option<String>) -> impl IntoView {
     view! {
         <!DOCTYPE html>
         <html lang="en">
@@ -21,6 +21,12 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
                 <link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
                 <AutoReload options=options.clone()/>
+                {turnstile_site_key.clone().map(|site_key| view! {
+                    <>
+                        <meta name="turnstile-site-key" content=site_key.clone()/>
+                        <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" defer></script>
+                    </>
+                })}
                 <link rel="modulepreload" href=format!("/pkg/{}", asset_manifest::JS_FILE)/>
                 <script type="module">
                     {format!(

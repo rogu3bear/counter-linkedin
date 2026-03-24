@@ -51,6 +51,21 @@ impl AppState {
         self.env.secret("TURNSTILE_SECRET").is_ok() || self.env.var("TURNSTILE_SECRET").is_ok()
     }
 
+    pub fn turnstile_secret(&self) -> Option<String> {
+        self.env
+            .secret("TURNSTILE_SECRET")
+            .ok()
+            .or_else(|| self.env.var("TURNSTILE_SECRET").ok())
+            .map(|value| value.to_string())
+    }
+
+    pub fn turnstile_site_key(&self) -> Option<String> {
+        self.env
+            .var("TURNSTILE_SITE_KEY")
+            .ok()
+            .map(|value| value.to_string())
+    }
+
     pub fn input_cost_per_million_usd(&self) -> f64 {
         self.env
             .var("AI_INPUT_COST_PER_MILLION_USD")

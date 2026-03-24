@@ -5,6 +5,8 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
+use wasm_bindgen::JsValue;
+use worker::{Fetch, Headers, Method, Request, RequestInit};
 
 use crate::api::{
     build_prompt, sanitize_output, validate_request, ApiError, ErrorEnvelope, TranslationRequest,
@@ -35,6 +37,13 @@ struct AiUsage {
     completion_tokens: i64,
     #[serde(default)]
     total_tokens: i64,
+}
+
+#[derive(Debug, Deserialize)]
+struct TurnstileVerification {
+    success: bool,
+    #[serde(default, rename = "error-codes")]
+    error_codes: Vec<String>,
 }
 
 pub async fn translate(
@@ -112,6 +121,36 @@ async fn translate_inner(
                 estimated_total_cost_usd: 0.0,
                 latency_ms: None,
                 status: "rate_limited".to_string(),
+                error_code: Some(error.code.clone()),
+                error_message: Some(error.message.clone()),
+                warnings: error.warnings.clone(),
+            },
+        )
+        .await;
+        return error_response(error);
+    }
+
+    if let Err(error) = verify_turnstile(&state, &request, &client_ip).await {
+        let _ = analytics::log_generation(
+            &state,
+            analytics::GenerationLog {
+                client_ip,
+                host,
+                route: "/api/translate".to_string(),
+                mode: Some(request.mode),
+                intensity: Some(request.intensity),
+                regenerate: request.regenerate,
+                input_text: request.input.clone(),
+                output_text: None,
+                model_name: Some(state.model_name()),
+                prompt_tokens: 0,
+                completion_tokens: 0,
+                total_tokens: 0,
+                estimated_input_cost_usd: 0.0,
+                estimated_output_cost_usd: 0.0,
+                estimated_total_cost_usd: 0.0,
+                latency_ms: None,
+                status: "human_check_failed".to_string(),
                 error_code: Some(error.code.clone()),
                 error_message: Some(error.message.clone()),
                 warnings: error.warnings.clone(),
@@ -255,13 +294,6 @@ async fn translate_inner(
     if was_truncated {
         warnings.push("Output was trimmed to keep the response compact.".to_string());
     }
-    if state.turnstile_secret_present() {
-        warnings.push(
-            "Turnstile secret is configured; server hooks are ready, but enforcement is still off."
-                .to_string(),
-        );
-    }
-
     let _ = analytics::log_generation(
         &state,
         analytics::GenerationLog {
@@ -326,4 +358,71 @@ fn host_name(headers: &HeaderMap) -> String {
         .and_then(|value| value.to_str().ok())
         .map(|value| value.to_string())
         .unwrap_or_else(|| "local-dev".to_string())
+}
+
+async fn verify_turnstile(
+    state: &AppState,
+    request: &TranslationRequest,
+    client_ip: &str,
+) -> Result<(), ApiError> {
+    let token = request
+        .turnstile_token
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ApiError::human_check_required("Click the human check first."))?;
+
+    let secret = state
+        .turnstile_secret()
+        .ok_or_else(|| ApiError::internal("Turnstile secret is not configured."))?;
+
+    let params = web_sys::UrlSearchParams::new().map_err(|error| {
+        ApiError::internal(format!("Failed to build Turnstile request: {error:?}"))
+    })?;
+    params
+        .append("secret", &secret);
+    params
+        .append("response", token);
+    params
+        .append("remoteip", client_ip);
+
+    let headers = Headers::new();
+    headers
+        .set("content-type", "application/x-www-form-urlencoded")
+        .map_err(|error| ApiError::internal(format!("Header set failed: {error}")))?;
+
+    let mut init = RequestInit::new();
+    let body = params.to_string().as_string().unwrap_or_default();
+    init.with_method(Method::Post)
+        .with_headers(headers)
+        .with_body(Some(JsValue::from_str(&body)));
+
+    let request = Request::new_with_init(
+        "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+        &init,
+    )
+    .map_err(|error| ApiError::internal(format!("Turnstile request setup failed: {error}")))?;
+
+    let mut response = Fetch::Request(request)
+        .send()
+        .await
+        .map_err(|error| ApiError::internal(format!("Turnstile verification failed: {error}")))?;
+
+    let verification = response
+        .json::<TurnstileVerification>()
+        .await
+        .map_err(|error| ApiError::internal(format!("Turnstile response decode failed: {error}")))?;
+
+    if verification.success {
+        Ok(())
+    } else {
+        let detail = if verification.error_codes.is_empty() {
+            "unknown".to_string()
+        } else {
+            verification.error_codes.join(", ")
+        };
+        Err(ApiError::human_check_required(format!(
+            "Human check failed. Try again. ({detail})"
+        )))
+    }
 }

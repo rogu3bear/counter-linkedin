@@ -93,9 +93,11 @@ pub struct MetricsSummary {
     pub successful_requests: i64,
     pub failed_requests: i64,
     pub requests_today: i64,
+    pub requests_last_24h: i64,
     pub requests_last_7d: i64,
     pub estimated_total_cost_usd: f64,
     pub estimated_cost_today_usd: f64,
+    pub estimated_cost_last_24h_usd: f64,
     pub estimated_cost_last_7d_usd: f64,
     pub average_cost_per_success_usd: f64,
     pub average_latency_ms: f64,
@@ -168,6 +170,14 @@ impl ApiError {
             warnings: vec![],
         }
     }
+
+    pub fn human_check_required(message: impl Into<String>) -> Self {
+        Self {
+            code: "human_check_required".to_string(),
+            message: message.into(),
+            warnings: vec![],
+        }
+    }
 }
 
 #[cfg(feature = "ssr")]
@@ -176,6 +186,7 @@ impl ApiError {
         match self.code.as_str() {
             "bad_request" => axum::http::StatusCode::BAD_REQUEST,
             "rate_limited" => axum::http::StatusCode::TOO_MANY_REQUESTS,
+            "human_check_required" => axum::http::StatusCode::FORBIDDEN,
             "upstream_failure" => axum::http::StatusCode::BAD_GATEWAY,
             _ => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -446,7 +457,7 @@ mod tests {
 
         let prompt = build_prompt(&request);
 
-        assert!(prompt.system.contains("CounterLinkedIn language"));
+        assert!(prompt.system.contains("You write in CounterLinkedIn."));
         assert!(prompt.user.contains("LinkedIn -> CounterLinkedIn"));
     }
 
