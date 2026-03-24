@@ -14,7 +14,7 @@ pub fn MetricsPage() -> impl IntoView {
                         <span class="brand-mark__glyph">"in"</span>
                     </div>
                     <div class="brand-copy">
-                        <h1>"Indeknil Metrics"</h1>
+                        <h1>"CounterLinkedIn Metrics"</h1>
                         <p>"Usage, spend, and every generation that hit the edge."</p>
                     </div>
                 </div>

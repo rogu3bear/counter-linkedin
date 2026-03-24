@@ -41,7 +41,7 @@ impl TranslationMode {
     }
 
     pub fn input_hint(self) -> &'static str {
-        "Posts, pitches, job ads. Indeknil can tell."
+        "Posts, pitches, job ads. CounterLinkedIn can tell."
     }
 
     pub fn placeholder(self) -> &'static str {

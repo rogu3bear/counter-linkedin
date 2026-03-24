@@ -226,7 +226,7 @@ fn mode_string(mode: TranslationMode) -> String {
 fn auth_challenge() -> Response {
     (
         StatusCode::UNAUTHORIZED,
-        [(header::WWW_AUTHENTICATE, "Basic realm=\"Indeknil Metrics\"")],
+        [(header::WWW_AUTHENTICATE, "Basic realm=\"CounterLinkedIn Metrics\"")],
         "Authentication required.",
     )
         .into_response()
