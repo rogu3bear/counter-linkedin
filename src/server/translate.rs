@@ -248,7 +248,7 @@ async fn translate_inner(
         }
     };
 
-    let (output, was_truncated) = sanitize_output(&ai_output.response);
+    let (output, was_truncated) = sanitize_output(&ai_output.response, &request.input);
     if output.is_empty() {
         let api_error = ApiError::upstream_failure(
             "Workers AI returned an empty response.",
@@ -292,7 +292,7 @@ async fn translate_inner(
 
     let mut warnings = Vec::new();
     if was_truncated {
-        warnings.push("Output was trimmed to keep the response compact.".to_string());
+        warnings.push("Output was trimmed to stay proportional to the source.".to_string());
     }
     let _ = analytics::log_generation(
         &state,

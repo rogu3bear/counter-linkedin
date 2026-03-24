@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_MODEL: &str = "@cf/meta/llama-3.1-8b-instruct";
 pub const MAX_INPUT_CHARS: usize = 4_000;
-pub const MAX_OUTPUT_CHARS: usize = 1_280;
-pub const MAX_OUTPUT_TOKENS: u16 = 360;
+pub const MAX_OUTPUT_CHARS: usize = 3_200;
+pub const MAX_OUTPUT_TOKENS: u16 = 900;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
 #[serde(rename_all = "snake_case")]
@@ -226,6 +226,7 @@ pub fn validate_request(mut request: TranslationRequest) -> Result<TranslationRe
 pub fn build_prompt(request: &TranslationRequest) -> PromptBundle {
     let intensity_band = intensity_band(request.intensity);
     let intensity_directive = intensity_directive(request.intensity);
+    let length_directive = length_directive(&request.input);
     let regenerate_note = if request.regenerate {
         "Produce a fresh alternative wording, not the same cadence as last time."
     } else {
@@ -293,11 +294,11 @@ pub fn build_prompt(request: &TranslationRequest) -> PromptBundle {
                 "No profanity.\n",
                 "Return only the rewritten text.\n",
                 "No intro sentence. Start directly with the post.\n",
-                "Aim for 1-2 short paragraphs.\n",
-                "Usually 2-6 sentences total.\n",
+                "{length_directive}\n",
                 "Source:\n{input}"
             ),
             regenerate_note = regenerate_note,
+            length_directive = length_directive,
             input = request.input
         ),
         TranslationMode::RawToLinkedin => format!(
@@ -306,11 +307,11 @@ pub fn build_prompt(request: &TranslationRequest) -> PromptBundle {
                 "{regenerate_note}\n",
                 "Return only the cleaned-up version.\n",
                 "No intro sentence. Start directly with the rewrite.\n",
-                "Aim for 1-2 short paragraphs.\n",
-                "Usually 2-5 crisp sentences total.\n",
+                "{length_directive}\n",
                 "Source:\n{input}"
             ),
             regenerate_note = regenerate_note,
+            length_directive = length_directive,
             input = request.input
         ),
         TranslationMode::JobPostToHonest => format!(
@@ -319,11 +320,11 @@ pub fn build_prompt(request: &TranslationRequest) -> PromptBundle {
                 "{regenerate_note}\n",
                 "Return only the honest translation.\n",
                 "No intro sentence. Start directly with the translation.\n",
-                "Aim for 1-2 short paragraphs.\n",
-                "Usually 3-7 compact sentences total.\n",
+                "{length_directive}\n",
                 "Source:\n{input}"
             ),
             regenerate_note = regenerate_note,
+            length_directive = length_directive,
             input = request.input
         ),
     };
@@ -331,25 +332,24 @@ pub fn build_prompt(request: &TranslationRequest) -> PromptBundle {
     PromptBundle {
         system,
         user,
-        max_tokens: MAX_OUTPUT_TOKENS,
+        max_tokens: output_token_limit(&request.input),
         temperature: temperature_for(request.intensity),
     }
 }
 
-pub fn sanitize_output(raw: &str) -> (String, bool) {
+pub fn sanitize_output(raw: &str, input: &str) -> (String, bool) {
     let trimmed = raw
         .trim()
         .trim_matches('\"')
         .trim_matches('\'')
         .replace("\r\n", "\n");
     let trimmed = strip_leading_framing(&trimmed);
-    let (trimmed, paragraph_truncated) = limit_paragraphs(&trimmed, 2);
-
-    let mut truncated = paragraph_truncated;
+    let max_chars = output_char_limit(input);
+    let mut truncated = false;
     let mut output = String::new();
 
     for (index, ch) in trimmed.chars().enumerate() {
-        if index >= MAX_OUTPUT_CHARS {
+        if index >= max_chars {
             truncated = true;
             break;
         }
@@ -401,18 +401,38 @@ fn strip_leading_framing(text: &str) -> String {
     value
 }
 
-fn limit_paragraphs(text: &str, max_paragraphs: usize) -> (String, bool) {
-    let paragraphs = text
-        .split("\n\n")
-        .map(str::trim)
-        .filter(|segment| !segment.is_empty())
-        .collect::<Vec<_>>();
-
-    if paragraphs.len() <= max_paragraphs {
-        return (paragraphs.join("\n\n"), false);
+fn length_directive(input: &str) -> &'static str {
+    match input.chars().count() {
+        0..=180 => {
+            "Match the scale of the source. If the source is tiny, keep the rewrite tiny. Do not pad it into a longer post."
+        }
+        181..=900 => {
+            "Match the scale of the source. Keep roughly the same footprint and rhythm. Do not bloat it or flatten it into a one-liner."
+        }
+        _ => {
+            "Match the scale of the source. If the source is multiple paragraphs, keep it multiple paragraphs unless clarity requires a small trim. Do not compress a couple paragraphs into a tiny blurb."
+        }
     }
+}
 
-    (paragraphs[..max_paragraphs].join("\n\n"), true)
+fn output_char_limit(input: &str) -> usize {
+    match input.chars().count() {
+        0..=180 => 420,
+        181..=600 => 1_000,
+        601..=1_400 => 1_800,
+        1_401..=2_400 => 2_500,
+        _ => MAX_OUTPUT_CHARS,
+    }
+}
+
+fn output_token_limit(input: &str) -> u16 {
+    match input.chars().count() {
+        0..=180 => 140,
+        181..=600 => 280,
+        601..=1_400 => 460,
+        1_401..=2_400 => 680,
+        _ => MAX_OUTPUT_TOKENS,
+    }
 }
 
 pub fn intensity_band(intensity: u8) -> &'static str {
@@ -477,23 +497,26 @@ mod tests {
 
         assert!(prompt.system.contains("You write in CounterLinkedIn."));
         assert!(prompt.user.contains("LinkedIn -> CounterLinkedIn"));
+        assert!(prompt.user.contains("If the source is tiny, keep the rewrite tiny."));
     }
 
     #[test]
     fn sanitize_output_truncates_long_text() {
         let source = "x".repeat(MAX_OUTPUT_CHARS + 20);
-        let (output, truncated) = sanitize_output(&source);
+        let input = "x".repeat(MAX_INPUT_CHARS);
+        let (output, truncated) = sanitize_output(&source, &input);
 
         assert!(truncated);
         assert!(output.ends_with("..."));
     }
 
     #[test]
-    fn sanitize_output_keeps_only_two_paragraphs() {
+    fn sanitize_output_preserves_multiple_paragraphs_when_within_limit() {
         let source = "first\n\nsecond\n\nthird";
-        let (output, truncated) = sanitize_output(source);
+        let input = "This is a source long enough to justify multiple short paragraphs.".repeat(8);
+        let (output, truncated) = sanitize_output(source, &input);
 
-        assert!(truncated);
-        assert_eq!(output, "first\n\nsecond...");
+        assert!(!truncated);
+        assert_eq!(output, source);
     }
 }

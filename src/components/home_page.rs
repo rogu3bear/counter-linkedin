@@ -41,7 +41,8 @@ pub fn HomePage() -> impl IntoView {
             }
 
             let token = turnstile_token.get_untracked();
-            if turnstile_required.get_untracked() && token.as_deref().unwrap_or_default().is_empty() {
+            if turnstile_required.get_untracked() && token.as_deref().unwrap_or_default().is_empty()
+            {
                 error.set(Some("Click the human check first.".to_string()));
                 return;
             }
@@ -201,11 +202,17 @@ pub fn HomePage() -> impl IntoView {
                         <p>"LinkedIn backwards. Career backwards."</p>
                     </div>
                 </div>
+                <div class="topbar-copy">
+                    <p class="topbar-kicker">"Professional polish, translated into consequences."</p>
+                    <p class="topbar-dek">
+                        "Paste the post, pitch, or job ad. Get back the version that probably should not be posted in public."
+                    </p>
+                </div>
             </header>
 
             <section class="translator">
                 <div class="pane pane--input">
-                    <div class="pane-head">
+                    <div class="pane-head pane-head--input">
                         <div>
                             <p class="pane-label">"Source"</p>
                             <h2>{move || mode.get().input_label()}</h2>
@@ -214,6 +221,40 @@ pub fn HomePage() -> impl IntoView {
                         <span class="pane-meta">
                             {move || format!("{} / 4000", input.get().chars().count())}
                         </span>
+                    </div>
+
+                    <div class="input-controls">
+                        <p class="control-label">"Send it back as"</p>
+                        <div class="output-actions output-actions--modes">
+                            <For
+                                each=move || {
+                                    [
+                                        TranslationMode::LinkedinToCounterLinkedin,
+                                        TranslationMode::RawToLinkedin,
+                                        TranslationMode::JobPostToHonest,
+                                    ]
+                                    .into_iter()
+                                }
+                                key=|item| *item as u8
+                                children=move |item| {
+                                    view! {
+                                        <button
+                                            class="ghost-action mode-action"
+                                            class:mode-action--active=move || mode.get() == item
+                                            type="button"
+                                            disabled=move || in_flight.get()
+                                            on:click=move |_| {
+                                                mode.set(item);
+                                                copied.set(false);
+                                                error.set(None);
+                                            }
+                                        >
+                                            {item.output_button_label()}
+                                        </button>
+                                    }
+                                }
+                            />
+                        </div>
                     </div>
 
                     <textarea
@@ -238,7 +279,10 @@ pub fn HomePage() -> impl IntoView {
                         }
                     />
 
-                    <div class="turnstile-panel">
+                    <div
+                        class="turnstile-panel"
+                        class:turnstile-panel--active=move || turnstile_required.get()
+                    >
                         <div node_ref=turnstile_mount class="turnstile-widget"></div>
                         <Show when=move || turnstile_required.get()>
                             <p class="turnstile-note">
@@ -277,46 +321,16 @@ pub fn HomePage() -> impl IntoView {
                 </div>
 
                 <div class="pane pane--output">
-                    <div class="pane-head">
-                        <div>
-                            <p class="pane-label">"Return"</p>
-                            <h2>"Choose the version you want back."</h2>
-                            <p class="pane-direction">"Same meaning. Different career outcome."</p>
-                        </div>
-                    </div>
-
-                    <div class="output-toolbar">
-                        <div class="output-actions output-actions--modes">
-                            <For
-                                each=move || {
-                                    [
-                                        TranslationMode::LinkedinToCounterLinkedin,
-                                        TranslationMode::RawToLinkedin,
-                                        TranslationMode::JobPostToHonest,
-                                    ]
-                                    .into_iter()
-                                }
-                                key=|item| *item as u8
-                                children=move |item| {
-                                    view! {
-                                        <button
-                                            class="ghost-action mode-action"
-                                            class:mode-action--active=move || mode.get() == item
-                                            type="button"
-                                            disabled=move || in_flight.get()
-                                            on:click=move |_| {
-                                                mode.set(item);
-                                                copied.set(false);
-                                                error.set(None);
-                                            }
-                                        >
-                                            {item.output_button_label()}
-                                        </button>
-                                    }
-                                }
-                            />
-                        </div>
-                        <div class="output-actions output-actions--utility">
+                    <div class="output-stage">
+                        <div class="pane-head pane-head--output">
+                            <div>
+                                <p class="pane-label">"Return"</p>
+                                <h2>"The version worth screenshotting."</h2>
+                                <p class="pane-direction">
+                                    "Same meaning. Different career outcome."
+                                </p>
+                            </div>
+                            <div class="output-actions output-actions--utility">
                             <button
                                 class="ghost-action"
                                 type="button"
@@ -340,46 +354,48 @@ pub fn HomePage() -> impl IntoView {
                                 "Regenerate"
                             </button>
                         </div>
-                    </div>
-
-                    <Show when=move || error.get().is_some()>
-                        <div class="feedback feedback--error" role="alert">
-                            {move || error.get().unwrap_or_default()}
                         </div>
-                    </Show>
 
-                    <Show
-                        when=move || in_flight.get()
-                        fallback=move || {
-                            if output.get().trim().is_empty() {
-                                view! {
-                                    <div class="output-empty">
-                                        <p>{move || empty_state_copy(mode.get())}</p>
-                                    </div>
+                        <Show when=move || error.get().is_some()>
+                            <div class="feedback feedback--error" role="alert">
+                                {move || error.get().unwrap_or_default()}
+                            </div>
+                        </Show>
+
+                        <Show
+                            when=move || in_flight.get()
+                            fallback=move || {
+                                if output.get().trim().is_empty() {
+                                    view! {
+                                        <div class="output-empty">
+                                            <p class="output-empty__label">"Ready for damage"</p>
+                                            <p class="output-empty__copy">{move || empty_state_copy(mode.get())}</p>
+                                        </div>
+                                    }
+                                        .into_any()
+                                } else {
+                                    view! {
+                                        <div class="output-copy" aria-live="polite">
+                                            {move || output.get()}
+                                        </div>
+                                    }
+                                        .into_any()
                                 }
-                                    .into_any()
-                            } else {
-                                view! {
-                                    <div class="output-copy" aria-live="polite">
-                                        {move || output.get()}
-                                    </div>
-                                }
-                                    .into_any()
                             }
-                        }
-                    >
-                        <LoadingPane/>
-                    </Show>
+                        >
+                            <LoadingPane/>
+                        </Show>
 
-                    <Show when=move || !warnings.get().is_empty()>
-                        <ul class="warning-list">
-                            <For
-                                each=move || warnings.get()
-                                key=|warning| warning.clone()
-                                children=move |warning| view! { <li>{warning}</li> }
-                            />
-                        </ul>
-                    </Show>
+                        <Show when=move || !warnings.get().is_empty()>
+                            <ul class="warning-list">
+                                <For
+                                    each=move || warnings.get()
+                                    key=|warning| warning.clone()
+                                    children=move |warning| view! { <li>{warning}</li> }
+                                />
+                            </ul>
+                        </Show>
+                    </div>
                 </div>
             </section>
         </main>
@@ -488,7 +504,9 @@ async fn read_clipboard_text() -> Result<String, ()> {
         };
 
         let clipboard = window.navigator().clipboard();
-        let value = JsFuture::from(clipboard.read_text()).await.map_err(|_| ())?;
+        let value = JsFuture::from(clipboard.read_text())
+            .await
+            .map_err(|_| ())?;
         value.as_string().ok_or(())
     }
 
@@ -511,7 +529,8 @@ fn read_turnstile_site_key() -> Option<String> {
             .query_selector("meta[name='turnstile-site-key']")
             .ok()
             .flatten()?;
-        meta.get_attribute("content").filter(|value| !value.is_empty())
+        meta.get_attribute("content")
+            .filter(|value| !value.is_empty())
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -594,7 +613,9 @@ fn render_turnstile_widget(
     let errored = Closure::<dyn FnMut()>::wrap(Box::new(move || {
         ready_signal.set(false);
         token_signal.set(None);
-        error_signal.set(Some("Human check failed to load. Refresh and try again.".to_string()));
+        error_signal.set(Some(
+            "Human check failed to load. Refresh and try again.".to_string(),
+        ));
     }));
     let _ = js_sys::Reflect::set(
         &options,

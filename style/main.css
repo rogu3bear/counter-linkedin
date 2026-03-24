@@ -3,6 +3,7 @@
   --panel: #ffffff;
   --panel-soft: #faf8f5;
   --panel-output: #fdfcf9;
+  --panel-muted: #f1ece4;
   --ink: #141414;
   --ink-soft: #6a655e;
   --line: #ddd8d1;
@@ -10,9 +11,10 @@
   --accent: #c81d25;
   --accent-soft: rgba(200, 29, 37, 0.08);
   --accent-line: rgba(200, 29, 37, 0.22);
+  --lift: 0 24px 70px rgba(20, 20, 20, 0.055);
   --shadow: 0 22px 60px rgba(20, 20, 20, 0.07);
-  --radius-xl: 24px;
-  --radius-lg: 18px;
+  --radius-xl: 34px;
+  --radius-lg: 24px;
   --radius-md: 12px;
   --radius-pill: 999px;
   --max-width: 1760px;
@@ -23,15 +25,17 @@
 }
 
 html {
-  background: var(--bg);
+  background:
+    radial-gradient(circle at top left, rgba(200, 29, 37, 0.09), transparent 28%),
+    linear-gradient(180deg, #f6f1ea 0%, var(--bg) 34%, #eee7de 100%);
   color: var(--ink);
-  font-family: "Avenir Next", "Helvetica Neue", sans-serif;
+  font-family: "Instrument Sans", "Avenir Next", "Helvetica Neue", sans-serif;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--bg);
+  background: transparent;
 }
 
 button,
@@ -47,14 +51,15 @@ button {
 .translate-page {
   width: min(var(--max-width), calc(100% - 24px));
   margin: 0 auto;
-  padding: 28px 0 40px;
+  padding: 32px 0 48px;
 }
 
 .topbar {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin-bottom: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(280px, 0.95fr);
+  gap: 18px 32px;
+  align-items: end;
+  margin-bottom: 26px;
 }
 
 .brand {
@@ -68,7 +73,7 @@ button {
   place-items: center;
   width: 68px;
   height: 68px;
-  border-radius: 18px;
+  border-radius: 22px;
   background: var(--accent);
   box-shadow: var(--shadow);
 }
@@ -95,6 +100,29 @@ button {
   letter-spacing: -0.015em;
 }
 
+.topbar-copy {
+  display: grid;
+  gap: 8px;
+  max-width: 42ch;
+  justify-self: end;
+}
+
+.topbar-kicker,
+.topbar-dek {
+  margin: 0;
+}
+
+.topbar-kicker {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.topbar-dek {
+  color: var(--ink-soft);
+  line-height: 1.55;
+}
+
 .ghost-action,
 .primary-action {
   border: 1px solid transparent;
@@ -107,35 +135,36 @@ button {
 
 .translator {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-xl);
-  background: var(--panel);
-  box-shadow: 0 24px 80px rgba(20, 20, 20, 0.06);
-  overflow: hidden;
-  min-height: min(860px, calc(100vh - 156px));
+  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.15fr);
+  gap: 22px;
+  align-items: stretch;
+  min-height: min(860px, calc(100vh - 188px));
 }
 
 .pane {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: var(--panel);
-}
-
-.pane + .pane {
-  border-left: 1px solid var(--line);
 }
 
 .pane--input {
-  background: var(--panel-soft);
+  padding: 24px 0 0;
+  border-radius: var(--radius-xl);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.18)),
+    var(--panel-soft);
+  box-shadow: var(--lift);
 }
 
 .pane--output {
+  position: relative;
+  padding: 20px;
+  border-radius: 42px 42px 34px 52px;
   background:
-    linear-gradient(180deg, rgba(200, 29, 37, 0.025) 0%, rgba(200, 29, 37, 0) 22%),
+    radial-gradient(circle at top right, rgba(200, 29, 37, 0.12), transparent 28%),
+    linear-gradient(180deg, rgba(200, 29, 37, 0.045) 0%, rgba(200, 29, 37, 0) 22%),
     var(--panel-output);
+  box-shadow: 0 34px 80px rgba(20, 20, 20, 0.08);
 }
 
 .pane-head {
@@ -143,13 +172,14 @@ button {
   justify-content: space-between;
   align-items: start;
   gap: 16px;
-  padding: 20px 24px 14px;
-  border-bottom: 1px solid var(--line);
+  padding: 0 28px;
 }
 
 .pane-label,
 .pane-meta,
-.shortcut-note {
+.shortcut-note,
+.control-label,
+.output-empty__label {
   margin: 0;
   color: var(--ink-soft);
   font-size: 0.78rem;
@@ -160,9 +190,9 @@ button {
 
 .pane-head h2 {
   margin: 6px 0 0;
-  font-size: 1.16rem;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
+  font-size: 1.2rem;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
 }
 
 .pane-direction {
@@ -179,16 +209,33 @@ button {
   min-height: clamp(420px, 56vh, 760px);
 }
 
+.pane-head--input {
+  margin-bottom: 18px;
+}
+
+.pane-head--output {
+  padding: 0;
+}
+
+.input-controls {
+  display: grid;
+  gap: 10px;
+  padding: 0 28px 18px;
+}
+
 .translate-textarea {
   width: 100%;
   flex: 1;
   border: none;
-  padding: 24px;
-  background: transparent;
+  border-radius: 28px;
+  margin: 0 24px;
+  padding: 28px;
+  background: rgba(255, 255, 255, 0.5);
   color: var(--ink);
   resize: none;
   line-height: 1.65;
   font-size: 1.03rem;
+  box-shadow: inset 0 0 0 1px rgba(207, 200, 191, 0.55);
 }
 
 .translate-textarea:focus,
@@ -206,37 +253,46 @@ button {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  padding: 16px 24px 22px;
-  border-top: 1px solid var(--line);
+  padding: 18px 28px 28px;
 }
 
 .turnstile-panel {
-  display: grid;
-  gap: 8px;
-  padding: 0 24px 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 18px;
+  margin: 14px 28px 0;
+  padding: 0;
+  color: var(--ink-soft);
 }
 
 .turnstile-widget {
-  min-height: 66px;
+  min-height: 0;
 }
 
 .turnstile-note {
   margin: 0;
-  color: var(--ink-soft);
   font-size: 0.84rem;
   line-height: 1.4;
 }
 
+.turnstile-panel--active {
+  padding: 10px 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.58);
+  box-shadow: inset 0 0 0 1px rgba(207, 200, 191, 0.55);
+}
+
 .pane-action-group {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
 .primary-action,
 .ghost-action {
-  min-height: 42px;
-  padding: 0 16px;
+  min-height: 44px;
+  padding: 0 18px;
   border-radius: var(--radius-pill);
   white-space: nowrap;
 }
@@ -244,12 +300,13 @@ button {
 .primary-action {
   background: var(--accent);
   color: #fff;
+  box-shadow: 0 14px 30px rgba(200, 29, 37, 0.24);
   cursor: pointer;
 }
 
 .ghost-action {
-  background: transparent;
-  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.58);
+  border-color: rgba(207, 200, 191, 0.78);
   color: var(--ink);
   cursor: pointer;
 }
@@ -273,30 +330,35 @@ button {
   align-items: center;
 }
 
-.output-toolbar {
+.output-stage {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 14px 24px 16px;
-  border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.8);
+  flex: 1;
+  flex-direction: column;
+  min-height: 100%;
+  gap: 18px;
+  padding: 34px;
+  border-radius: 34px 34px 28px 40px;
+  background: rgba(255, 253, 249, 0.88);
+  box-shadow:
+    inset 0 0 0 1px rgba(207, 200, 191, 0.48),
+    0 16px 40px rgba(20, 20, 20, 0.035);
 }
 
 .output-actions--utility .ghost-action {
-  background: rgba(20, 20, 20, 0.02);
+  background: rgba(20, 20, 20, 0.04);
 }
 
 .mode-action {
-  border-color: var(--line-strong);
-  background: rgba(255, 255, 255, 0.9);
+  border-color: transparent;
+  background: rgba(255, 255, 255, 0.68);
   font-weight: 700;
 }
 
 .mode-action--active {
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
+  border-color: rgba(200, 29, 37, 0.24);
+  background: rgba(200, 29, 37, 0.12);
   color: var(--ink);
+  box-shadow: 0 10px 26px rgba(200, 29, 37, 0.12);
 }
 
 .output-copy,
@@ -306,28 +368,65 @@ button {
 }
 
 .output-copy {
-  padding: 24px;
+  position: relative;
+  padding: 30px 34px 34px 58px;
+  border-radius: 30px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(249, 244, 237, 0.72)),
+    var(--panel);
   white-space: pre-wrap;
-  line-height: 1.65;
-  font-size: 1.03rem;
+  line-height: 1.86;
+  font-size: clamp(1.06rem, 1vw + 0.78rem, 1.28rem);
+  letter-spacing: -0.012em;
   user-select: text;
+  box-shadow:
+    inset 0 0 0 1px rgba(207, 200, 191, 0.45),
+    0 20px 40px rgba(20, 20, 20, 0.045);
+}
+
+.output-copy::before {
+  content: "“";
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  color: rgba(200, 29, 37, 0.22);
+  font-family: "Iowan Old Style", "Georgia", serif;
+  font-size: 4.8rem;
+  line-height: 1;
+}
+
+.output-copy::first-line {
+  color: #892028;
+  font-weight: 700;
 }
 
 .output-empty {
   display: flex;
-  align-items: center;
-  padding: 24px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  padding: 34px;
+  border-radius: 28px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0.2)),
+    var(--panel-muted);
   color: var(--ink-soft);
   line-height: 1.65;
   font-size: 1rem;
+  box-shadow: inset 0 0 0 1px rgba(207, 200, 191, 0.42);
 }
 
-.output-empty p {
-  max-width: 26ch;
+.output-empty__copy {
+  max-width: 24ch;
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(1.2rem, 1vw + 0.88rem, 1.55rem);
+  line-height: 1.3;
+  letter-spacing: -0.03em;
 }
 
 .feedback {
-  margin: 14px 22px 0;
+  margin: -2px 0 0;
   padding: 14px 16px;
   border-radius: var(--radius-md);
 }
@@ -340,7 +439,7 @@ button {
 
 .warning-list {
   margin: 0;
-  padding: 0 22px 20px 40px;
+  padding: 0 0 0 20px;
   color: var(--ink-soft);
   line-height: 1.55;
 }
@@ -349,7 +448,14 @@ button {
   display: grid;
   align-content: center;
   gap: 14px;
-  padding: 24px;
+  padding: 30px 34px;
+  border-radius: 30px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(249, 244, 237, 0.72)),
+    var(--panel);
+  box-shadow:
+    inset 0 0 0 1px rgba(207, 200, 191, 0.45),
+    0 20px 40px rgba(20, 20, 20, 0.04);
 }
 
 .loading-line {
@@ -601,6 +707,14 @@ button {
 }
 
 @media (max-width: 900px) {
+  .topbar {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar-copy {
+    justify-self: start;
+  }
+
   .translator {
     grid-template-columns: 1fr;
     min-height: auto;
@@ -612,11 +726,6 @@ button {
 
   .generation-card__body {
     grid-template-columns: 1fr;
-  }
-
-  .pane + .pane {
-    border-left: none;
-    border-top: 1px solid var(--line);
   }
 }
 
@@ -643,15 +752,17 @@ button {
   }
 
   .pane-head,
-  .pane-actions,
-  .output-toolbar {
+  .pane-actions {
     padding-left: 16px;
     padding-right: 16px;
   }
 
+  .input-controls,
   .turnstile-panel {
-    padding-left: 16px;
-    padding-right: 16px;
+    margin-left: 16px;
+    margin-right: 16px;
+    padding-left: 0;
+    padding-right: 0;
   }
 
   .translate-textarea,
@@ -659,8 +770,8 @@ button {
   .output-empty,
   .loading-pane {
     min-height: 300px;
-    padding-left: 16px;
-    padding-right: 16px;
+    padding-left: 18px;
+    padding-right: 18px;
   }
 
   .output-actions {
@@ -676,15 +787,6 @@ button {
     align-self: flex-end;
   }
 
-  .output-toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .output-actions--utility {
-    padding-top: 4px;
-  }
-
   .brand-copy h1 {
     font-size: clamp(2rem, 11vw, 3rem);
   }
@@ -696,6 +798,32 @@ button {
 
   .pane-direction {
     max-width: 28ch;
+  }
+
+  .translate-textarea {
+    margin-left: 16px;
+    margin-right: 16px;
+    padding: 22px 20px;
+  }
+
+  .pane--output {
+    padding: 10px;
+    border-radius: 30px;
+  }
+
+  .output-stage {
+    padding: 22px;
+    border-radius: 24px;
+  }
+
+  .output-copy {
+    padding: 28px 22px 26px 42px;
+  }
+
+  .output-copy::before {
+    top: 14px;
+    left: 10px;
+    font-size: 3.5rem;
   }
 
   .metrics-page {
@@ -756,18 +884,21 @@ button {
     padding-right: 28px;
   }
 
-  .output-toolbar,
   .pane-actions {
     padding-left: 28px;
     padding-right: 28px;
+  }
+
+  .input-controls,
+  .turnstile-panel {
+    margin-left: 28px;
+    margin-right: 28px;
   }
 
   .translate-textarea,
   .output-copy,
   .output-empty,
   .loading-pane {
-    padding-left: 28px;
-    padding-right: 28px;
     font-size: 1.08rem;
   }
 
