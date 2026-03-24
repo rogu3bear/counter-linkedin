@@ -7,6 +7,25 @@ pub const MAX_INPUT_CHARS: usize = 4_000;
 pub const MAX_OUTPUT_CHARS: usize = 3_200;
 pub const MAX_OUTPUT_TOKENS: u16 = 900;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct UsageSummary {
+    pub daily_runs: u16,
+    pub daily_cap: u16,
+    pub donation_prompt: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EntryStatusResponse {
+    pub entry_required: bool,
+    pub entry_granted: bool,
+    pub usage: UsageSummary,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EntryPassRequest {
+    pub turnstile_token: String,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum TranslationMode {
@@ -36,7 +55,6 @@ impl TranslationMode {
             Self::JobPostToHonest => "Honest",
         }
     }
-
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -46,8 +64,6 @@ pub struct TranslationRequest {
     pub intensity: u8,
     #[serde(default)]
     pub regenerate: bool,
-    #[serde(default)]
-    pub turnstile_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -55,6 +71,7 @@ pub struct TranslationResponse {
     pub output: String,
     pub mode: TranslationMode,
     pub intensity: u8,
+    pub usage: UsageSummary,
     #[serde(default)]
     pub warnings: Vec<String>,
 }
@@ -387,7 +404,10 @@ fn strip_leading_framing(text: &str) -> String {
 
         for prefix in PREFIXES {
             if lower.starts_with(prefix) {
-                value = value[prefix.len()..].trim_start_matches([' ', '\n', ':']).trim().to_string();
+                value = value[prefix.len()..]
+                    .trim_start_matches([' ', '\n', ':'])
+                    .trim()
+                    .to_string();
                 changed = true;
                 break;
             }
@@ -476,7 +496,6 @@ mod tests {
             mode: TranslationMode::LinkedinToCounterLinkedin,
             intensity: 50,
             regenerate: false,
-            turnstile_token: None,
         });
 
         assert!(result.is_err());
@@ -490,14 +509,15 @@ mod tests {
             mode: TranslationMode::LinkedinToCounterLinkedin,
             intensity: 70,
             regenerate: false,
-            turnstile_token: None,
         };
 
         let prompt = build_prompt(&request);
 
         assert!(prompt.system.contains("You write in CounterLinkedIn."));
         assert!(prompt.user.contains("LinkedIn -> CounterLinkedIn"));
-        assert!(prompt.user.contains("If the source is tiny, keep the rewrite tiny."));
+        assert!(prompt
+            .user
+            .contains("If the source is tiny, keep the rewrite tiny."));
     }
 
     #[test]

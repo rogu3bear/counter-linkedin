@@ -2,14 +2,15 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use worker::D1Type;
 
-use crate::api::ApiError;
+use crate::api::{ApiError, UsageSummary};
 
 use super::AppState;
 
 const WINDOW_MINUTES: usize = 10;
 const MAX_REQUESTS_PER_WINDOW: usize = 18;
 const DAY_HOURS: usize = 24;
-const MAX_REQUESTS_PER_DAY: usize = 25;
+pub const MAX_REQUESTS_PER_DAY: usize = 25;
+pub const DONATION_PROMPT_RUNS: usize = 8;
 const MIN_SECONDS_BETWEEN_REQUESTS: usize = 2;
 
 #[derive(Debug, Deserialize)]
@@ -120,6 +121,60 @@ pub async fn enforce(state: &AppState, client_ip: &str, route: &str) -> Result<(
         .map_err(|error| ApiError::internal(error))?;
 
     Ok(())
+}
+
+pub async fn usage_summary(
+    state: &AppState,
+    client_ip: &str,
+    route: &str,
+) -> Result<UsageSummary, ApiError> {
+    if state
+        .rate_limit_bypass_ips()
+        .iter()
+        .any(|candidate| candidate == client_ip.trim())
+    {
+        return Ok(UsageSummary {
+            daily_runs: 0,
+            daily_cap: MAX_REQUESTS_PER_DAY as u16,
+            donation_prompt: false,
+        });
+    }
+
+    let Some(db) = state.db() else {
+        return Ok(UsageSummary {
+            daily_runs: 0,
+            daily_cap: MAX_REQUESTS_PER_DAY as u16,
+            donation_prompt: false,
+        });
+    };
+
+    let fingerprint = fingerprint_ip(client_ip, &state.rate_limit_salt());
+    let daily_runs = db
+        .prepare(
+            "SELECT COUNT(*) AS request_count
+             FROM request_events
+             WHERE client_hash = ?1
+               AND route = ?2
+               AND outcome = 'accepted'
+               AND created_at >= datetime('now', ?3)",
+        )
+        .bind_refs(&[
+            D1Type::Text(fingerprint.as_str()),
+            D1Type::Text(route),
+            D1Type::Text("-24 hours"),
+        ])
+        .map_err(|error| ApiError::internal(d1_error(error)))?
+        .first::<CountRow>(None)
+        .await
+        .map_err(|error| ApiError::internal(d1_error(error)))?
+        .map(|row| row.request_count.max(0) as u16)
+        .unwrap_or_default();
+
+    Ok(UsageSummary {
+        daily_runs,
+        daily_cap: MAX_REQUESTS_PER_DAY as u16,
+        donation_prompt: daily_runs as usize >= DONATION_PROMPT_RUNS,
+    })
 }
 
 pub fn fingerprint_ip(ip: &str, salt: &str) -> String {

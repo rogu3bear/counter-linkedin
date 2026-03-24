@@ -5,15 +5,13 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use wasm_bindgen::JsValue;
-use worker::{Fetch, Headers, Method, Request, RequestInit};
 
 use crate::api::{
     build_prompt, sanitize_output, validate_request, ApiError, ErrorEnvelope, TranslationRequest,
     TranslationResponse,
 };
 
-use super::{analytics, rate_limit, AppState};
+use super::{analytics, entry, rate_limit, AppState};
 
 #[derive(Debug, Serialize)]
 struct AiInput<'a> {
@@ -39,13 +37,6 @@ struct AiUsage {
     total_tokens: i64,
 }
 
-#[derive(Debug, Deserialize)]
-struct TurnstileVerification {
-    success: bool,
-    #[serde(default, rename = "error-codes")]
-    error_codes: Vec<String>,
-}
-
 pub async fn translate(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -60,7 +51,7 @@ async fn translate_inner(
     headers: HeaderMap,
     payload: TranslationRequest,
 ) -> Response {
-    let client_ip = client_ip(&headers);
+    let client_ip = entry::client_ip(&headers);
     let host = host_name(&headers);
     let raw_input = payload.input.clone();
     let raw_mode = payload.mode;
@@ -130,34 +121,10 @@ async fn translate_inner(
         return error_response(error);
     }
 
-    if let Err(error) = verify_turnstile(&state, &request, &client_ip).await {
-        let _ = analytics::log_generation(
-            &state,
-            analytics::GenerationLog {
-                client_ip,
-                host,
-                route: "/api/translate".to_string(),
-                mode: Some(request.mode),
-                intensity: Some(request.intensity),
-                regenerate: request.regenerate,
-                input_text: request.input.clone(),
-                output_text: None,
-                model_name: Some(state.model_name()),
-                prompt_tokens: 0,
-                completion_tokens: 0,
-                total_tokens: 0,
-                estimated_input_cost_usd: 0.0,
-                estimated_output_cost_usd: 0.0,
-                estimated_total_cost_usd: 0.0,
-                latency_ms: None,
-                status: "human_check_failed".to_string(),
-                error_code: Some(error.code.clone()),
-                error_message: Some(error.message.clone()),
-                warnings: error.warnings.clone(),
-            },
-        )
-        .await;
-        return error_response(error);
+    if !entry::has_entry_pass(&headers, &state, &client_ip) {
+        return error_response(ApiError::human_check_required(
+            "Finish the entry check first.",
+        ));
     }
 
     let prompt = build_prompt(&request);
@@ -168,9 +135,8 @@ async fn translate_inner(
     let ai = match state.ai() {
         Ok(ai) => ai,
         Err(error) => {
-            let api_error = ApiError::internal(format!(
-                "Workers AI binding is unavailable: {error}"
-            ));
+            let api_error =
+                ApiError::internal(format!("Workers AI binding is unavailable: {error}"));
             let _ = analytics::log_generation(
                 &state,
                 analytics::GenerationLog {
@@ -215,9 +181,8 @@ async fn translate_inner(
     let ai_output = match ai_result {
         Ok(output) => output,
         Err(error) => {
-            let api_error = ApiError::upstream_failure(format!(
-                "Workers AI request failed: {error}"
-            ));
+            let api_error =
+                ApiError::upstream_failure(format!("Workers AI request failed: {error}"));
             let _ = analytics::log_generation(
                 &state,
                 analytics::GenerationLog {
@@ -250,9 +215,7 @@ async fn translate_inner(
 
     let (output, was_truncated) = sanitize_output(&ai_output.response, &request.input);
     if output.is_empty() {
-        let api_error = ApiError::upstream_failure(
-            "Workers AI returned an empty response.",
-        );
+        let api_error = ApiError::upstream_failure("Workers AI returned an empty response.");
         let _ = analytics::log_generation(
             &state,
             analytics::GenerationLog {
@@ -327,6 +290,9 @@ async fn translate_inner(
             output,
             mode: request.mode,
             intensity: request.intensity,
+            usage: rate_limit::usage_summary(&state, &client_ip, "/api/translate")
+                .await
+                .unwrap_or_default(),
             warnings,
         }),
     )
@@ -337,92 +303,10 @@ fn error_response(error: ApiError) -> Response {
     (error.status_code(), Json(ErrorEnvelope { error })).into_response()
 }
 
-fn client_ip(headers: &HeaderMap) -> String {
-    for key in ["cf-connecting-ip", "x-forwarded-for", "x-real-ip"] {
-        if let Some(value) = headers.get(key).and_then(|value| value.to_str().ok()) {
-            if let Some(first) = value.split(',').next() {
-                let trimmed = first.trim();
-                if !trimmed.is_empty() {
-                    return trimmed.to_string();
-                }
-            }
-        }
-    }
-
-    "local-dev".to_string()
-}
-
 fn host_name(headers: &HeaderMap) -> String {
     headers
         .get("host")
         .and_then(|value| value.to_str().ok())
         .map(|value| value.to_string())
         .unwrap_or_else(|| "local-dev".to_string())
-}
-
-async fn verify_turnstile(
-    state: &AppState,
-    request: &TranslationRequest,
-    client_ip: &str,
-) -> Result<(), ApiError> {
-    let token = request
-        .turnstile_token
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| ApiError::human_check_required("Click the human check first."))?;
-
-    let secret = state
-        .turnstile_secret()
-        .ok_or_else(|| ApiError::internal("Turnstile secret is not configured."))?;
-
-    let params = web_sys::UrlSearchParams::new().map_err(|error| {
-        ApiError::internal(format!("Failed to build Turnstile request: {error:?}"))
-    })?;
-    params
-        .append("secret", &secret);
-    params
-        .append("response", token);
-    params
-        .append("remoteip", client_ip);
-
-    let headers = Headers::new();
-    headers
-        .set("content-type", "application/x-www-form-urlencoded")
-        .map_err(|error| ApiError::internal(format!("Header set failed: {error}")))?;
-
-    let mut init = RequestInit::new();
-    let body = params.to_string().as_string().unwrap_or_default();
-    init.with_method(Method::Post)
-        .with_headers(headers)
-        .with_body(Some(JsValue::from_str(&body)));
-
-    let request = Request::new_with_init(
-        "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-        &init,
-    )
-    .map_err(|error| ApiError::internal(format!("Turnstile request setup failed: {error}")))?;
-
-    let mut response = Fetch::Request(request)
-        .send()
-        .await
-        .map_err(|error| ApiError::internal(format!("Turnstile verification failed: {error}")))?;
-
-    let verification = response
-        .json::<TurnstileVerification>()
-        .await
-        .map_err(|error| ApiError::internal(format!("Turnstile response decode failed: {error}")))?;
-
-    if verification.success {
-        Ok(())
-    } else {
-        let detail = if verification.error_codes.is_empty() {
-            "unknown".to_string()
-        } else {
-            verification.error_codes.join(", ")
-        };
-        Err(ApiError::human_check_required(format!(
-            "Human check failed. Try again. ({detail})"
-        )))
-    }
 }

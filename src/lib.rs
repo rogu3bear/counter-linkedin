@@ -44,15 +44,15 @@ async fn fetch(
             .query()
             .map(|value| format!("?{value}"))
             .unwrap_or_default();
-        let rewritten_uri: axum::http::Uri = format!("{rewritten}{query}")
-            .parse()
-            .map_err(|error: axum::http::uri::InvalidUri| {
-                worker::Error::RustError(error.to_string())
-            })?;
+        let rewritten_uri: axum::http::Uri = format!("{rewritten}{query}").parse().map_err(
+            |error: axum::http::uri::InvalidUri| worker::Error::RustError(error.to_string()),
+        )?;
         *req.uri_mut() = rewritten_uri;
     }
 
     let mut router = Router::new()
+        .route("/api/entry/status", get(server::entry::status))
+        .route("/api/entry/pass", post(server::entry::pass))
         .route("/api/translate", post(server::translate::translate))
         .route("/api/admin/metrics", get(server::analytics::metrics))
         .leptos_routes_with_context(&state, routes, || {}, {

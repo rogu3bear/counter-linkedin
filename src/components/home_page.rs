@@ -2,7 +2,10 @@ use std::rc::Rc;
 
 use leptos::{ev::KeyboardEvent, html::Div, prelude::*, task::spawn_local};
 
-use crate::api::{ErrorEnvelope, TranslationMode, TranslationRequest, TranslationResponse};
+use crate::api::{
+    EntryStatusResponse, ErrorEnvelope, TranslationMode, TranslationRequest, TranslationResponse,
+    UsageSummary,
+};
 
 #[component]
 pub fn HomePage() -> impl IntoView {
@@ -14,13 +17,25 @@ pub fn HomePage() -> impl IntoView {
     let copied = RwSignal::new(false);
     let in_flight = RwSignal::new(false);
     let last_request = RwSignal::new(None::<TranslationRequest>);
-    let turnstile_required = RwSignal::new(false);
+    let usage = RwSignal::new(UsageSummary::default());
+    let donation_dismissed = RwSignal::new(false);
+    let entry_required = RwSignal::new(false);
+    let entry_granted = RwSignal::new(false);
+    let entry_loading = RwSignal::new(true);
+    let entry_pass_in_flight = RwSignal::new(false);
     let turnstile_token = RwSignal::new(None::<String>);
     let turnstile_ready = RwSignal::new(false);
     let turnstile_site_key = RwSignal::new(read_turnstile_site_key());
     let turnstile_mount = NodeRef::<Div>::new();
+    let turnstile_rendered = RwSignal::new(false);
+    let status_booted = RwSignal::new(false);
     #[cfg(not(target_arch = "wasm32"))]
-    let _ = turnstile_site_key;
+    let _ = (
+        turnstile_site_key,
+        entry_pass_in_flight,
+        turnstile_rendered,
+        status_booted,
+    );
 
     let submit = Rc::new({
         let mode = mode;
@@ -31,7 +46,9 @@ pub fn HomePage() -> impl IntoView {
         let copied = copied;
         let in_flight = in_flight;
         let last_request = last_request;
-        let turnstile_required = turnstile_required;
+        let usage = usage;
+        let entry_required = entry_required;
+        let entry_granted = entry_granted;
         let turnstile_token = turnstile_token;
         let turnstile_ready = turnstile_ready;
 
@@ -40,10 +57,8 @@ pub fn HomePage() -> impl IntoView {
                 return;
             }
 
-            let token = turnstile_token.get_untracked();
-            if turnstile_required.get_untracked() && token.as_deref().unwrap_or_default().is_empty()
-            {
-                error.set(Some("Click the human check first.".to_string()));
+            if entry_required.get_untracked() && !entry_granted.get_untracked() {
+                error.set(Some("Finish the entry check first.".to_string()));
                 return;
             }
 
@@ -51,7 +66,6 @@ pub fn HomePage() -> impl IntoView {
                 match last_request.get_untracked() {
                     Some(mut request) => {
                         request.regenerate = true;
-                        request.turnstile_token = token;
                         request
                     }
                     None => return,
@@ -62,7 +76,6 @@ pub fn HomePage() -> impl IntoView {
                     mode: mode.get_untracked(),
                     intensity: 70,
                     regenerate: false,
-                    turnstile_token: token,
                 }
             };
 
@@ -78,6 +91,8 @@ pub fn HomePage() -> impl IntoView {
                 let error = error;
                 let in_flight = in_flight;
                 let last_request = last_request;
+                let usage = usage;
+                let entry_granted = entry_granted;
                 let turnstile_token = turnstile_token;
                 let turnstile_ready = turnstile_ready;
 
@@ -86,25 +101,27 @@ pub fn HomePage() -> impl IntoView {
                         Ok(response) => {
                             output.set(response.output);
                             warnings.set(response.warnings);
+                            usage.set(response.usage);
                             error.set(None);
 
                             let mut canonical = request_for_success;
                             canonical.regenerate = false;
-                            canonical.turnstile_token = None;
                             last_request.set(Some(canonical));
                         }
                         Err(envelope) => {
                             output.set(String::new());
                             warnings.set(envelope.error.warnings.clone());
                             error.set(Some(envelope.error.message));
+
+                            if envelope.error.code == "human_check_required" {
+                                entry_granted.set(false);
+                                turnstile_token.set(None);
+                                turnstile_ready.set(false);
+                                reset_turnstile_widget();
+                            }
                         }
                     }
 
-                    if turnstile_required.get_untracked() {
-                        turnstile_token.set(None);
-                        turnstile_ready.set(false);
-                        reset_turnstile_widget();
-                    }
                     in_flight.set(false);
                 }
             });
@@ -163,13 +180,54 @@ pub fn HomePage() -> impl IntoView {
 
     #[cfg(target_arch = "wasm32")]
     Effect::new({
+        let status_booted = status_booted;
+        let entry_required = entry_required;
+        let entry_granted = entry_granted;
+        let entry_loading = entry_loading;
+        let usage = usage;
+        let error = error;
+
+        move || {
+            if status_booted.get() {
+                return;
+            }
+
+            status_booted.set(true);
+
+            spawn_local(async move {
+                match fetch_entry_status().await {
+                    Ok(status) => {
+                        entry_required.set(status.entry_required);
+                        entry_granted.set(status.entry_granted);
+                        usage.set(status.usage);
+                        error.set(None);
+                    }
+                    Err(message) => {
+                        error.set(Some(message));
+                    }
+                }
+
+                entry_loading.set(false);
+            });
+        }
+    });
+
+    #[cfg(target_arch = "wasm32")]
+    Effect::new({
         let turnstile_site_key = turnstile_site_key;
         let turnstile_mount = turnstile_mount;
         let turnstile_token = turnstile_token;
         let turnstile_ready = turnstile_ready;
+        let entry_required = entry_required;
+        let entry_granted = entry_granted;
         let error = error;
+        let turnstile_rendered = turnstile_rendered;
 
         move || {
+            if !entry_required.get() || entry_granted.get() || turnstile_rendered.get() {
+                return;
+            }
+
             let Some(site_key) = turnstile_site_key.get() else {
                 return;
             };
@@ -184,115 +242,168 @@ pub fn HomePage() -> impl IntoView {
                 turnstile_ready,
                 error,
             ) {
-                turnstile_required.set(true);
-                turnstile_site_key.set(None);
+                turnstile_rendered.set(true);
             }
+        }
+    });
+
+    #[cfg(target_arch = "wasm32")]
+    Effect::new({
+        let turnstile_token = turnstile_token;
+        let turnstile_ready = turnstile_ready;
+        let entry_required = entry_required;
+        let entry_granted = entry_granted;
+        let entry_loading = entry_loading;
+        let entry_pass_in_flight = entry_pass_in_flight;
+        let usage = usage;
+        let error = error;
+
+        move || {
+            if !entry_required.get() || entry_granted.get() || entry_pass_in_flight.get() {
+                return;
+            }
+
+            let Some(token) = turnstile_token.get() else {
+                return;
+            };
+
+            if token.trim().is_empty() {
+                return;
+            }
+
+            entry_pass_in_flight.set(true);
+            entry_loading.set(true);
+
+            spawn_local(async move {
+                match post_entry_pass(token).await {
+                    Ok(status) => {
+                        entry_granted.set(status.entry_granted);
+                        usage.set(status.usage);
+                        turnstile_token.set(None);
+                        turnstile_ready.set(false);
+                        error.set(None);
+                    }
+                    Err(message) => {
+                        turnstile_token.set(None);
+                        turnstile_ready.set(false);
+                        reset_turnstile_widget();
+                        error.set(Some(message));
+                    }
+                }
+
+                entry_pass_in_flight.set(false);
+                entry_loading.set(false);
+            });
         }
     });
 
     view! {
         <main class="translate-page">
-            <header class="topbar">
+            <header class="translate-header">
                 <div class="brand">
                     <div class="brand-mark" aria-hidden="true">
                         <span class="brand-mark__glyph">"in"</span>
                     </div>
                     <div class="brand-copy">
                         <h1>"CounterLinkedIn"</h1>
-                        <p>"LinkedIn backwards. Career backwards."</p>
+                        <p>"Google Translate for career-ending honesty."</p>
                     </div>
                 </div>
-                <div class="topbar-copy">
-                    <p class="topbar-kicker">"Professional polish, translated into consequences."</p>
-                    <p class="topbar-dek">
-                        "Paste the post, pitch, or job ad. Get back the version that probably should not be posted in public."
-                    </p>
+                <div class="header-status">
+                    <Show when=move || { usage.get().daily_runs > 0 }>
+                        <p class="usage-pill">
+                            {move || format!("{} / {} today", usage.get().daily_runs, usage.get().daily_cap)}
+                        </p>
+                    </Show>
+                    <p class="header-note">"Professional polish in. Consequences out."</p>
                 </div>
             </header>
 
-            <section class="translator">
-                <div class="pane pane--input">
-                    <div class="pane-head pane-head--input">
-                        <div>
-                            <p class="pane-label">"Source"</p>
-                            <h2>{move || mode.get().input_label()}</h2>
-                            <p class="pane-direction">{move || mode.get().input_hint()}</p>
-                        </div>
-                        <span class="pane-meta">
-                            {move || format!("{} / 4000", input.get().chars().count())}
-                        </span>
-                    </div>
+            <div
+                class="entry-gate"
+                class:entry-gate--visible=move || entry_required.get() && !entry_granted.get()
+            >
+                <div class="entry-gate__scrim"></div>
+                <div class="entry-gate__card">
+                    <p class="entry-gate__eyebrow">"Human check"</p>
+                    <h2>"One gate at the door."</h2>
+                    <p class="entry-gate__copy">
+                        "Pass it once when you enter. The pre-generate interruption is gone."
+                    </p>
+                    <div node_ref=turnstile_mount class="entry-gate__widget"></div>
+                    <Show when=move || entry_loading.get()>
+                        <p class="entry-gate__note">"Checking access..."</p>
+                    </Show>
+                </div>
+            </div>
 
-                    <div class="input-controls">
-                        <p class="control-label">"Send it back as"</p>
-                        <div class="output-actions output-actions--modes">
-                            <For
-                                each=move || {
-                                    [
-                                        TranslationMode::LinkedinToCounterLinkedin,
-                                        TranslationMode::RawToLinkedin,
-                                        TranslationMode::JobPostToHonest,
-                                    ]
-                                    .into_iter()
-                                }
-                                key=|item| *item as u8
-                                children=move |item| {
-                                    view! {
-                                        <button
-                                            class="ghost-action mode-action"
-                                            class:mode-action--active=move || mode.get() == item
-                                            type="button"
-                                            disabled=move || in_flight.get()
-                                            on:click=move |_| {
-                                                mode.set(item);
-                                                copied.set(false);
-                                                error.set(None);
-                                            }
-                                        >
-                                            {item.output_button_label()}
-                                        </button>
-                                    }
-                                }
-                            />
-                        </div>
+            <Show when=move || { usage.get().donation_prompt && !donation_dismissed.get() }>
+                <div class="donation-modal" role="dialog" aria-modal="true" aria-labelledby="donation-title">
+                    <div class="donation-modal__card">
+                        <p class="donation-modal__eyebrow">"Approaching 10 runs"</p>
+                        <h2 id="donation-title">"This thing is earning its keep."</h2>
+                        <p>
+                            "Placeholder donation ask. You said you'll fill this in later, so the modal is wired and ready."
+                        </p>
+                        <button
+                            class="ghost-action"
+                            type="button"
+                            on:click=move |_| donation_dismissed.set(true)
+                        >
+                            "Hide for now"
+                        </button>
                     </div>
+                </div>
+            </Show>
 
-                    <textarea
-                        id="input-text"
-                        class="translate-textarea"
-                        rows="12"
-                        placeholder=move || mode.get().placeholder()
-                        prop:value=move || input.get()
-                        on:input=move |ev| {
-                            input.set(event_target_value(&ev));
-                            copied.set(false);
-                            error.set(None);
-                        }
-                        on:keydown={
-                            let submit = submit.clone();
-                            move |ev: KeyboardEvent| {
-                                if (ev.ctrl_key() || ev.meta_key()) && ev.key() == "Enter" {
-                                    ev.prevent_default();
-                                    submit(false);
+            <section class="translator translator--google">
+                <div class="translator-bar">
+                    <div class="mode-tabs">
+                        <For
+                            each=move || {
+                                [
+                                    TranslationMode::LinkedinToCounterLinkedin,
+                                    TranslationMode::RawToLinkedin,
+                                    TranslationMode::JobPostToHonest,
+                                ]
+                                .into_iter()
+                            }
+                            key=|item| *item as u8
+                            children=move |item| {
+                                view! {
+                                    <button
+                                        class="mode-tab"
+                                        class:mode-tab--active=move || mode.get() == item
+                                        type="button"
+                                        disabled=move || in_flight.get()
+                                        on:click=move |_| {
+                                            mode.set(item);
+                                            copied.set(false);
+                                            error.set(None);
+                                        }
+                                    >
+                                        {item.output_button_label()}
+                                    </button>
                                 }
                             }
-                        }
-                    />
-
-                    <div
-                        class="turnstile-panel"
-                        class:turnstile-panel--active=move || turnstile_required.get()
-                    >
-                        <div node_ref=turnstile_mount class="turnstile-widget"></div>
-                        <Show when=move || turnstile_required.get()>
-                            <p class="turnstile-note">
-                                "Cloudflare human check required before each run."
-                            </p>
-                        </Show>
+                        />
                     </div>
+                    <p class="translator-note">
+                        {move || if entry_required.get() && !entry_granted.get() {
+                            "Complete the entry check once, then translate freely."
+                        } else {
+                            "Ctrl/Cmd + Enter to translate."
+                        }}
+                    </p>
+                </div>
 
-                    <div class="pane-actions">
-                        <div class="pane-action-group">
+                <div class="translate-columns">
+                    <section class="editor-pane editor-pane--source">
+                        <div class="editor-head">
+                            <div>
+                                <p class="editor-label">"Text"</p>
+                                <h2>{move || mode.get().input_label()}</h2>
+                            </div>
                             <button
                                 class="ghost-action"
                                 type="button"
@@ -304,56 +415,68 @@ pub fn HomePage() -> impl IntoView {
                             >
                                 "Paste"
                             </button>
-                            <button
-                                class="primary-action"
-                                type="button"
-                                disabled=move || in_flight.get() || (turnstile_required.get() && !turnstile_ready.get())
-                                on:click={
-                                    let submit = submit.clone();
-                                    move |_| submit(false)
-                                }
-                            >
-                                {move || if in_flight.get() { "Generating..." } else { "Generate" }}
-                            </button>
                         </div>
-                        <p class="shortcut-note">"Ctrl/Cmd + Enter"</p>
-                    </div>
-                </div>
 
-                <div class="pane pane--output">
-                    <div class="output-stage">
-                        <div class="pane-head pane-head--output">
+                        <textarea
+                            id="input-text"
+                            class="translate-textarea"
+                            rows="12"
+                            placeholder=move || mode.get().placeholder()
+                            prop:value=move || input.get()
+                            on:input=move |ev| {
+                                input.set(event_target_value(&ev));
+                                copied.set(false);
+                                error.set(None);
+                            }
+                            on:keydown={
+                                let submit = submit.clone();
+                                move |ev: KeyboardEvent| {
+                                    if (ev.ctrl_key() || ev.meta_key()) && ev.key() == "Enter" {
+                                        ev.prevent_default();
+                                        submit(false);
+                                    }
+                                }
+                            }
+                        />
+
+                        <div class="editor-foot">
+                            <p class="pane-direction">{move || mode.get().input_hint()}</p>
+                            <span class="pane-meta">
+                                {move || format!("{} / 4000", input.get().chars().count())}
+                            </span>
+                        </div>
+                    </section>
+
+                    <section class="editor-pane editor-pane--output">
+                        <div class="editor-head">
                             <div>
-                                <p class="pane-label">"Return"</p>
-                                <h2>"The version worth screenshotting."</h2>
-                                <p class="pane-direction">
-                                    "Same meaning. Different career outcome."
-                                </p>
+                                <p class="editor-label">"Translation"</p>
+                                <h2>{move || mode.get().output_button_label()}</h2>
                             </div>
                             <div class="output-actions output-actions--utility">
-                            <button
-                                class="ghost-action"
-                                type="button"
-                                disabled=move || in_flight.get() || output.get().trim().is_empty()
-                                on:click={
-                                    let copy_output = copy_output.clone();
-                                    move |_| copy_output()
-                                }
-                            >
-                                {move || if copied.get() { "Copied" } else { "Copy" }}
-                            </button>
-                            <button
-                                class="ghost-action"
-                                type="button"
-                                disabled=move || in_flight.get() || last_request.get().is_none()
-                                on:click={
-                                    let submit = submit.clone();
-                                    move |_| submit(true)
-                                }
-                            >
-                                "Regenerate"
-                            </button>
-                        </div>
+                                <button
+                                    class="ghost-action"
+                                    type="button"
+                                    disabled=move || in_flight.get() || output.get().trim().is_empty()
+                                    on:click={
+                                        let copy_output = copy_output.clone();
+                                        move |_| copy_output()
+                                    }
+                                >
+                                    {move || if copied.get() { "Copied" } else { "Copy" }}
+                                </button>
+                                <button
+                                    class="ghost-action"
+                                    type="button"
+                                    disabled=move || in_flight.get() || last_request.get().is_none()
+                                    on:click={
+                                        let submit = submit.clone();
+                                        move |_| submit(true)
+                                    }
+                                >
+                                    "Regenerate"
+                                </button>
+                            </div>
                         </div>
 
                         <Show when=move || error.get().is_some()>
@@ -368,7 +491,7 @@ pub fn HomePage() -> impl IntoView {
                                 if output.get().trim().is_empty() {
                                     view! {
                                         <div class="output-empty">
-                                            <p class="output-empty__label">"Ready for damage"</p>
+                                            <p class="output-empty__label">"Result"</p>
                                             <p class="output-empty__copy">{move || empty_state_copy(mode.get())}</p>
                                         </div>
                                     }
@@ -395,7 +518,28 @@ pub fn HomePage() -> impl IntoView {
                                 />
                             </ul>
                         </Show>
-                    </div>
+
+                        <div class="editor-foot editor-foot--action">
+                            <button
+                                class="primary-action translate-action"
+                                type="button"
+                                disabled=move || in_flight.get() || entry_loading.get() || (entry_required.get() && !entry_granted.get())
+                                on:click={
+                                    let submit = submit.clone();
+                                    move |_| submit(false)
+                                }
+                            >
+                                {move || if in_flight.get() { "Generating..." } else { "Translate" }}
+                            </button>
+                            <p class="shortcut-note">
+                                {move || if usage.get().donation_prompt {
+                                    "Donation prompt armed near the 10-run mark."
+                                } else {
+                                    "Same idea. Different career outcome."
+                                }}
+                            </p>
+                        </div>
+                    </section>
                 </div>
             </section>
         </main>
@@ -418,6 +562,98 @@ fn empty_state_copy(mode: TranslationMode) -> &'static str {
         TranslationMode::LinkedinToCounterLinkedin => "The fireable version lands here.",
         TranslationMode::RawToLinkedin => "The employable version lands here.",
         TranslationMode::JobPostToHonest => "The subtext lands here.",
+    }
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+async fn fetch_entry_status() -> Result<EntryStatusResponse, String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use wasm_bindgen::JsCast;
+        use wasm_bindgen_futures::JsFuture;
+        use web_sys::{Request, RequestInit, RequestMode, Response};
+
+        let options = RequestInit::new();
+        options.set_method("GET");
+        options.set_mode(RequestMode::SameOrigin);
+
+        let request = Request::new_with_str_and_init("/api/entry/status", &options)
+            .map_err(|error| format!("{error:?}"))?;
+
+        let window = web_sys::window().ok_or_else(|| "Missing browser window".to_string())?;
+        let response = JsFuture::from(window.fetch_with_request(&request))
+            .await
+            .map_err(|error| format!("{error:?}"))?
+            .dyn_into::<Response>()
+            .map_err(|error| format!("{error:?}"))?;
+
+        let json = JsFuture::from(response.json().map_err(|error| format!("{error:?}"))?)
+            .await
+            .map_err(|error| format!("{error:?}"))?;
+
+        if response.ok() {
+            serde_wasm_bindgen::from_value(json).map_err(|error| error.to_string())
+        } else {
+            let envelope = serde_wasm_bindgen::from_value::<ErrorEnvelope>(json)
+                .map_err(|error| error.to_string())?;
+            Err(envelope.error.message)
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        Err("Entry status is only available in the browser.".to_string())
+    }
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+async fn post_entry_pass(_token: String) -> Result<EntryStatusResponse, String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use wasm_bindgen::JsCast;
+        use wasm_bindgen_futures::JsFuture;
+        use web_sys::{Request, RequestInit, RequestMode, Response};
+
+        let payload = serde_json::to_string(&crate::api::EntryPassRequest {
+            turnstile_token: _token,
+        })
+        .map_err(|error| error.to_string())?;
+
+        let options = RequestInit::new();
+        options.set_method("POST");
+        options.set_mode(RequestMode::SameOrigin);
+        options.set_body(&wasm_bindgen::JsValue::from_str(&payload));
+
+        let request = Request::new_with_str_and_init("/api/entry/pass", &options)
+            .map_err(|error| format!("{error:?}"))?;
+        request
+            .headers()
+            .set("Content-Type", "application/json")
+            .map_err(|error| format!("{error:?}"))?;
+
+        let window = web_sys::window().ok_or_else(|| "Missing browser window".to_string())?;
+        let response = JsFuture::from(window.fetch_with_request(&request))
+            .await
+            .map_err(|error| format!("{error:?}"))?
+            .dyn_into::<Response>()
+            .map_err(|error| format!("{error:?}"))?;
+
+        let json = JsFuture::from(response.json().map_err(|error| format!("{error:?}"))?)
+            .await
+            .map_err(|error| format!("{error:?}"))?;
+
+        if response.ok() {
+            serde_wasm_bindgen::from_value(json).map_err(|error| error.to_string())
+        } else {
+            let envelope = serde_wasm_bindgen::from_value::<ErrorEnvelope>(json)
+                .map_err(|error| error.to_string())?;
+            Err(envelope.error.message)
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        Err("Entry pass is only available in the browser.".to_string())
     }
 }
 
