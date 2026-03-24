@@ -702,6 +702,8 @@ fn mode_from_key(value: &str) -> Option<TranslationMode> {
 
 #[cfg(target_arch = "wasm32")]
 fn autosize_input_textarea(input_area: NodeRef<Textarea>) {
+    use wasm_bindgen::{JsCast, JsValue};
+
     let Some(textarea) = input_area.get() else {
         return;
     };
@@ -717,7 +719,16 @@ fn autosize_input_textarea(input_area: NodeRef<Textarea>) {
         .map(|width| width <= 640.0)
         .unwrap_or(false);
 
-    let style = textarea.style();
+    let Some(element) = textarea.dyn_ref::<web_sys::HtmlTextAreaElement>() else {
+        return;
+    };
+    let Ok(style_value) = js_sys::Reflect::get(element.as_ref(), &JsValue::from_str("style"))
+    else {
+        return;
+    };
+    let Ok(style) = style_value.dyn_into::<web_sys::CssStyleDeclaration>() else {
+        return;
+    };
 
     if !is_mobile {
         let _ = style.remove_property("height");
@@ -725,7 +736,7 @@ fn autosize_input_textarea(input_area: NodeRef<Textarea>) {
     }
 
     let _ = style.set_property("height", "auto");
-    let next_height = textarea.scroll_height().max(160);
+    let next_height = element.scroll_height().max(160);
     let _ = style.set_property("height", &format!("{next_height}px"));
 }
 
