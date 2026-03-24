@@ -306,7 +306,7 @@ pub fn HomePage() -> impl IntoView {
                     </div>
                     <div class="brand-copy">
                         <h1>"CounterLinkedIn"</h1>
-                        <p>"Google Translate for career-ending honesty."</p>
+                        <p>"Translate corporate language into consequences."</p>
                     </div>
                 </div>
                 <div class="header-status">
@@ -315,7 +315,7 @@ pub fn HomePage() -> impl IntoView {
                             {move || format!("{} / {} today", usage.get().daily_runs, usage.get().daily_cap)}
                         </p>
                     </Show>
-                    <p class="header-note">"Professional polish in. Consequences out."</p>
+                    <p class="header-note">"Utility first. Joke intact."</p>
                 </div>
             </header>
 
@@ -336,25 +336,6 @@ pub fn HomePage() -> impl IntoView {
                     </Show>
                 </div>
             </div>
-
-            <Show when=move || { usage.get().donation_prompt && !donation_dismissed.get() }>
-                <div class="donation-modal" role="dialog" aria-modal="true" aria-labelledby="donation-title">
-                    <div class="donation-modal__card">
-                        <p class="donation-modal__eyebrow">"Approaching 10 runs"</p>
-                        <h2 id="donation-title">"This thing is earning its keep."</h2>
-                        <p>
-                            "Placeholder donation ask. You said you'll fill this in later, so the modal is wired and ready."
-                        </p>
-                        <button
-                            class="ghost-action"
-                            type="button"
-                            on:click=move |_| donation_dismissed.set(true)
-                        >
-                            "Hide for now"
-                        </button>
-                    </div>
-                </div>
-            </Show>
 
             <section class="translator translator--google">
                 <div class="translator-bar">
@@ -390,18 +371,36 @@ pub fn HomePage() -> impl IntoView {
                     </div>
                     <p class="translator-note">
                         {move || if entry_required.get() && !entry_granted.get() {
-                            "Complete the entry check once, then translate freely."
+                            "Pass the human check once to unlock the tool."
                         } else {
-                            "Ctrl/Cmd + Enter to translate."
+                            "Ctrl/Cmd + Enter"
                         }}
                     </p>
                 </div>
+
+                <Show when=move || { usage.get().donation_prompt && !donation_dismissed.get() }>
+                    <div class="donation-banner" role="status" aria-live="polite">
+                        <div class="donation-banner__copy">
+                            <p class="donation-banner__eyebrow">"Approaching 10 runs"</p>
+                            <p class="donation-banner__text">
+                                "Placeholder donation prompt. Add the real ask later."
+                            </p>
+                        </div>
+                        <button
+                            class="ghost-action ghost-action--quiet"
+                            type="button"
+                            on:click=move |_| donation_dismissed.set(true)
+                        >
+                            "Dismiss"
+                        </button>
+                    </div>
+                </Show>
 
                 <div class="translate-columns">
                     <section class="editor-pane editor-pane--source">
                         <div class="editor-head">
                             <div>
-                                <p class="editor-label">"Text"</p>
+                                <p class="editor-label">"Source"</p>
                                 <h2>{move || mode.get().input_label()}</h2>
                             </div>
                             <button
@@ -450,7 +449,7 @@ pub fn HomePage() -> impl IntoView {
                     <section class="editor-pane editor-pane--output">
                         <div class="editor-head">
                             <div>
-                                <p class="editor-label">"Translation"</p>
+                                <p class="editor-label">"Result"</p>
                                 <h2>{move || mode.get().output_button_label()}</h2>
                             </div>
                             <div class="output-actions output-actions--utility">
@@ -533,9 +532,9 @@ pub fn HomePage() -> impl IntoView {
                             </button>
                             <p class="shortcut-note">
                                 {move || if usage.get().donation_prompt {
-                                    "Donation prompt armed near the 10-run mark."
+                                    "Donation banner is active near the 10-run mark."
                                 } else {
-                                    "Same idea. Different career outcome."
+                                    "Translate first. Regret later."
                                 }}
                             </p>
                         </div>
