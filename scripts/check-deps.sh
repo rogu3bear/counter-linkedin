@@ -64,7 +64,7 @@ else
 fi
 
 if grep -q '00000000-0000-0000-0000-000000000000' "$ROOT_DIR/wrangler.toml"; then
-  warn "wrangler.toml still contains placeholder D1 IDs. Replace them after running: bunx wrangler d1 create leptos-cf-db"
+  warn "wrangler.toml still contains placeholder D1 IDs. Replace them after running: bunx wrangler d1 create counter-linkedin-db"
 fi
 
 if [ "$missing" -ne 0 ]; then

@@ -1,9 +1,10 @@
 [package]
-name = "leptos-cf"
+name = "counter-linkedin"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "Single-crate Leptos starter for Cloudflare Workers with D1."
+description = "CounterLinkedIn MVP built on Leptos + Cloudflare Workers."
+build = "build.rs"
 
 [profile.release]
 opt-level = "s"
@@ -15,18 +16,35 @@ codegen-units = 1
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-axum = { version = "0.8", default-features = false, optional = true }
+axum = { version = "0.8", default-features = false, features = ["json"], optional = true }
+base64 = "0.22"
 console_error_panic_hook = { version = "0.1", optional = true }
 getrandom = { version = "0.4", features = ["wasm_js"] }
 getrandom03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+hex = "0.4"
+js-sys = "0.3"
 leptos = { version = "0.8" }
 leptos_axum = { version = "0.8.8", default-features = false, features = ["wasm"], optional = true }
 leptos_meta = { version = "0.8" }
 leptos_router = { version = "0.8" }
 send_wrapper = "0.6"
 serde = { version = "1", features = ["derive"] }
+serde-wasm-bindgen = "0.6"
+serde_json = "1"
+sha2 = "0.10"
 tower-service = "0.3"
 wasm-bindgen = "0.2.105"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+  "Clipboard",
+  "Headers",
+  "Navigator",
+  "Request",
+  "RequestInit",
+  "RequestMode",
+  "Response",
+  "Window",
+] }
 worker = { version = "0.7.5", features = ["http", "axum", "d1"], optional = true }
 
 [features]
@@ -44,9 +62,10 @@ ssr = [
 ]
 
 [package.metadata.leptos]
-output-name = "leptos-cf"
+output-name = "counter-linkedin"
 site-root = "target/site"
 site-pkg-dir = "pkg"
+hash-files = true
 style-file = "style/main.css"
 assets-dir = "assets"
 site-addr = "127.0.0.1:57581"

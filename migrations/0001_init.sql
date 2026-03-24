@@ -1,9 +1,10 @@
-CREATE TABLE IF NOT EXISTS todos (
+CREATE TABLE IF NOT EXISTS request_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  title TEXT NOT NULL,
-  completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+  client_hash TEXT NOT NULL,
+  route TEXT NOT NULL,
+  outcome TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_todos_completed_id
-ON todos (completed, id DESC);
+CREATE INDEX IF NOT EXISTS idx_request_events_client_route_created
+  ON request_events (client_hash, route, created_at DESC);

@@ -1,16 +1,28 @@
-name = "leptos-cf"
+name = "counter-linkedin"
 main = "build/index.js"
 compatibility_date = "2026-03-20"
+routes = [
+  { pattern = "indeknil.com", custom_domain = true },
+  { pattern = "stats.indeknil.com", custom_domain = true }
+]
 
 [build]
-command = "cargo leptos build --release && cargo install -q \"worker-build@^0.7\" && worker-build --release --features ssr"
+command = "./scripts/wrangler-build.sh"
 
 [assets]
 directory = "./target/site"
 
+[ai]
+binding = "AI"
+
+[vars]
+WORKERS_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct"
+AI_INPUT_COST_PER_MILLION_USD = "0.28"
+AI_OUTPUT_COST_PER_MILLION_USD = "0.83"
+
 [[d1_databases]]
 binding = "DB"
-database_name = "leptos-cf-db"
-database_id = "00000000-0000-0000-0000-000000000000"
-preview_database_id = "00000000-0000-0000-0000-000000000000"
+database_name = "counter-linkedin-db"
+database_id = "da577478-265a-4298-b76b-7c38ff4e9608"
+preview_database_id = "da577478-265a-4298-b76b-7c38ff4e9608"
 migrations_dir = "migrations"

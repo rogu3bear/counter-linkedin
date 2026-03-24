@@ -67,9 +67,9 @@ cat <<'EOF'
 Bootstrap complete.
 
 Next steps:
-1. bunx wrangler d1 create leptos-cf-db
+1. bunx wrangler d1 create counter-linkedin-db
 2. Replace the placeholder database IDs in wrangler.toml
-3. bunx wrangler d1 migrations apply leptos-cf-db --local
+3. bunx wrangler d1 migrations apply counter-linkedin-db --local
 4. cargo leptos build --release
-5. bunx wrangler dev --local --ip 127.0.0.1 --port 57581
+5. bunx wrangler dev --remote --ip 127.0.0.1 --port 57581
 EOF

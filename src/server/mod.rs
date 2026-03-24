@@ -1,10 +1,6 @@
+pub mod analytics;
+pub mod rate_limit;
 pub mod state;
-pub mod todos;
+pub mod translate;
 
 pub use state::AppState;
-
-use leptos::prelude::ServerFnError;
-
-pub fn server_error(error: impl std::fmt::Display) -> ServerFnError {
-    ServerFnError::ServerError(error.to_string())
-}

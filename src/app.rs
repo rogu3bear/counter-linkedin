@@ -1,11 +1,15 @@
 use leptos::prelude::*;
-use leptos_meta::{provide_meta_context, Meta, MetaTags, Stylesheet, Title};
+use leptos_meta::{provide_meta_context, Meta, MetaTags, Title};
 use leptos_router::{
     components::{Route, Router, Routes},
     StaticSegment,
 };
 
-use crate::components::todo_page::TodoPage;
+use crate::components::{home_page::HomePage, metrics_page::MetricsPage};
+
+mod asset_manifest {
+    include!(concat!(env!("OUT_DIR"), "/asset_manifest.rs"));
+}
 
 #[allow(dead_code)]
 pub fn shell(options: LeptosOptions) -> impl IntoView {
@@ -17,7 +21,14 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
                 <link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
                 <AutoReload options=options.clone()/>
-                <HydrationScripts options/>
+                <link rel="modulepreload" href=format!("/pkg/{}", asset_manifest::JS_FILE)/>
+                <script type="module">
+                    {format!(
+                        "import init, {{ hydrate }} from '/pkg/{}'; init({{ module_or_path: '/pkg/{}' }}).then(() => hydrate());",
+                        asset_manifest::JS_FILE,
+                        asset_manifest::WASM_FILE
+                    )}
+                </script>
                 <MetaTags/>
             </head>
             <body>
@@ -32,16 +43,17 @@ pub fn App() -> impl IntoView {
     provide_meta_context();
 
     view! {
-        <Stylesheet id="leptos" href="/pkg/leptos-cf.css"/>
-        <Title text="Leptos CF Starter"/>
+        <link id="leptos" rel="stylesheet" href=format!("/pkg/{}", asset_manifest::CSS_FILE)/>
+        <Title text="CounterLinkedIn"/>
         <Meta
             name="description"
-            content="A full-stack Leptos starter for Cloudflare Workers with D1-backed todos."
+            content="Translate professional polish into terminable honesty."
         />
 
         <Router>
             <Routes fallback=|| view! { <p class="route-miss">"Page not found."</p> }.into_view()>
-                <Route path=StaticSegment("") view=TodoPage/>
+                <Route path=StaticSegment("") view=HomePage/>
+                <Route path=StaticSegment("metrics") view=MetricsPage/>
             </Routes>
         </Router>
     }
