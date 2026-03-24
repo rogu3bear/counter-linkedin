@@ -1,5 +1,3 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use axum::{
     extract::State,
     http::{header, HeaderMap},
@@ -149,10 +147,20 @@ fn entry_signature(client_ip: &str, expires_at: u64, salt: &str) -> String {
 }
 
 fn now_unix_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or_default()
+    #[cfg(target_arch = "wasm32")]
+    {
+        (js_sys::Date::now() / 1000.0).floor() as u64
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_secs())
+            .unwrap_or_default()
+    }
 }
 
 async fn verify_turnstile(state: &AppState, token: &str, client_ip: &str) -> Result<(), ApiError> {
