@@ -73,8 +73,13 @@ Security and admin bindings:
 - `RATE_LIMIT_SALT`: recommended secret used to hash client IPs before logging
 - `TURNSTILE_SITE_KEY`: public site key rendered in the browser for the Cloudflare human check
 - `TURNSTILE_SECRET`: secret used for server-side `siteverify`
-- `ADMIN_USERNAME`: required to protect the metrics dashboard and admin API
-- `ADMIN_PASSWORD`: required to protect the metrics dashboard and admin API
+- `RATE_LIMIT_BYPASS_IPS`: optional comma-separated IPs exempt from the quota and cooldown
+- `ADMIN_USERNAME`: legacy fallback for protecting the metrics dashboard and admin API outside Cloudflare Access
+- `ADMIN_PASSWORD`: legacy fallback for protecting the metrics dashboard and admin API outside Cloudflare Access
+
+Production note:
+
+- `stats.indeknil.com` is intended to sit behind Cloudflare Access with an allow policy for `@mlnavigator.com`
 
 ## Local development
 
@@ -176,16 +181,14 @@ The main hook points for future abuse controls are:
 - The app uses a direct JSON endpoint instead of Leptos server functions for generation so the Worker can inspect headers for IP-based throttling cleanly.
 - D1 now stores both the throttle ledger and a full generation ledger: input text, output text, mode, token usage, latency, and estimated cost.
 - Cost numbers are estimates computed from Workers AI token usage and the configured per-million prices. They are useful for ops, but they are not a substitute for Cloudflare invoice truth.
-- `stats.indeknil.com` is served by the same Worker. The root path is rewritten to `/metrics`, and admin auth is enforced before the dashboard or API load.
+- `stats.indeknil.com` is served by the same Worker. The root path is rewritten to `/metrics`, and production access is enforced at the edge with Cloudflare Access.
 - Prompt construction stays in shared Rust code so the UI and server agree on mode names, limits, and output expectations.
 
 ## Intentionally out of scope
 
 - accounts
 - public gallery
-- auth
 - payments
 - browser extension
 - saved history UI
-- full Turnstile enforcement
 - moderation pipeline beyond the current validation and rate limiting

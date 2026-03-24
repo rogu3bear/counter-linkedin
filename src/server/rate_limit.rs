@@ -23,6 +23,14 @@ struct SecondsRow {
 }
 
 pub async fn enforce(state: &AppState, client_ip: &str, route: &str) -> Result<(), ApiError> {
+    if state
+        .rate_limit_bypass_ips()
+        .iter()
+        .any(|candidate| candidate == client_ip.trim())
+    {
+        return Ok(());
+    }
+
     let Some(db) = state.db() else {
         return Ok(());
     };

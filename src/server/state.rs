@@ -97,6 +97,23 @@ impl AppState {
             .or_else(|| self.env.var("ADMIN_PASSWORD").ok())
             .map(|value| value.to_string())
     }
+
+    pub fn rate_limit_bypass_ips(&self) -> Vec<String> {
+        self.env
+            .secret("RATE_LIMIT_BYPASS_IPS")
+            .ok()
+            .or_else(|| self.env.var("RATE_LIMIT_BYPASS_IPS").ok())
+            .map(|value| {
+                value
+                    .to_string()
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToString::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
 }
 
 impl FromRef<AppState> for LeptosOptions {
