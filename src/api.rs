@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_MODEL: &str = "@cf/meta/llama-3.1-8b-instruct";
-pub const MAX_INPUT_CHARS: usize = 4_000;
+pub const MAX_INPUT_CHARS: usize = 1_500;
 pub const MAX_OUTPUT_CHARS: usize = 3_200;
 pub const MAX_OUTPUT_TOKENS: u16 = 900;
 
@@ -35,13 +35,21 @@ pub enum TranslationMode {
     JobPostToHonest,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ProfanityMode {
+    #[default]
+    Forbid,
+    Allow,
+}
+
 impl TranslationMode {
     pub fn input_label(self) -> &'static str {
         "Paste the text."
     }
 
     pub fn input_hint(self) -> &'static str {
-        "Posts, pitches, job ads. CounterLinkedIn can tell."
+        "Choose the mode above, then paste the text."
     }
 
     pub fn placeholder(self) -> &'static str {
@@ -62,6 +70,8 @@ pub struct TranslationRequest {
     pub input: String,
     pub mode: TranslationMode,
     pub intensity: u8,
+    #[serde(default)]
+    pub profanity_mode: ProfanityMode,
     #[serde(default)]
     pub regenerate: bool,
 }
@@ -242,7 +252,7 @@ pub fn validate_request(mut request: TranslationRequest) -> Result<TranslationRe
 
 pub fn build_prompt(request: &TranslationRequest) -> PromptBundle {
     let intensity_band = intensity_band(request.intensity);
-    let intensity_directive = intensity_directive(request.intensity);
+    let intensity_directive = intensity_directive(request.intensity, request.profanity_mode);
     let length_directive = length_directive(&request.input);
     let regenerate_note = if request.regenerate {
         "Produce a fresh alternative wording, not the same cadence as last time."
@@ -252,7 +262,11 @@ pub fn build_prompt(request: &TranslationRequest) -> PromptBundle {
 
     let system = match request.mode {
         TranslationMode::LinkedinToCounterLinkedin => {
-            build_counter_linkedin_system(intensity_band, intensity_directive)
+            build_counter_linkedin_system(
+                intensity_band,
+                intensity_directive,
+                request.profanity_mode,
+            )
         }
         TranslationMode::RawToLinkedin => format!(
             concat!(
@@ -261,6 +275,7 @@ pub fn build_prompt(request: &TranslationRequest) -> PromptBundle {
                 "Do not turn one sentence into a TED Talk.\n",
                 "Do not invent achievements, metrics, or gratitude.\n",
                 "Do no evil.\n",
+                "Keep the casing normal and readable.\n",
                 "No prefacing or labels.\n",
                 "Current intensity band: {intensity_band}. {intensity_directive}"
             ),
@@ -274,6 +289,8 @@ pub fn build_prompt(request: &TranslationRequest) -> PromptBundle {
                 "Stay grounded in what the text supports.\n",
                 "Be funny, sharp, concise, and readable.\n",
                 "Do no evil.\n",
+                "No racism or racial stereotypes.\n",
+                "Keep the casing normal and readable.\n",
                 "No prefacing or labels.\n",
                 "Current intensity band: {intensity_band}. {intensity_directive}"
             ),
@@ -287,6 +304,7 @@ pub fn build_prompt(request: &TranslationRequest) -> PromptBundle {
             regenerate_note,
             length_directive,
             &request.input,
+            request.profanity_mode,
         ),
         TranslationMode::RawToLinkedin => format!(
             concat!(
@@ -294,6 +312,7 @@ pub fn build_prompt(request: &TranslationRequest) -> PromptBundle {
                 "{regenerate_note}\n",
                 "Return only the cleaned-up version.\n",
                 "No intro sentence. Start directly with the rewrite.\n",
+                "Keep the casing normal and readable.\n",
                 "{length_directive}\n",
                 "Source:\n{input}"
             ),
@@ -307,6 +326,7 @@ pub fn build_prompt(request: &TranslationRequest) -> PromptBundle {
                 "{regenerate_note}\n",
                 "Return only the honest translation.\n",
                 "No intro sentence. Start directly with the translation.\n",
+                "Keep the casing normal and readable.\n",
                 "{length_directive}\n",
                 "Source:\n{input}"
             ),
@@ -327,7 +347,9 @@ pub fn build_prompt(request: &TranslationRequest) -> PromptBundle {
 fn build_counter_linkedin_system(
     intensity_band: &str,
     intensity_directive: &str,
+    profanity_mode: ProfanityMode,
 ) -> String {
+    let profanity_rule = profanity_rule(profanity_mode);
     format!(
         concat!(
             "You write in CounterLinkedIn.\n",
@@ -343,12 +365,16 @@ fn build_counter_linkedin_system(
             "- If yes, do not say it.\n",
             "- Do no evil.\n",
             "- Avoid sexual or harmful content.\n",
-            "- No profanity.\n",
+            "- No racism or racial stereotypes.\n",
+            "- {profanity_rule}\n",
             "- No cruelty, harassment, threats, or slurs.\n",
             "Output rules:\n",
             "- No prefacing or labels.\n",
+            "- Do not wrap the whole output in quotation marks.\n",
+            "- Keep the casing normal and readable.\n",
             "Current intensity band: {intensity_band}. {intensity_directive}"
         ),
+        profanity_rule = profanity_rule,
         intensity_band = intensity_band,
         intensity_directive = intensity_directive
     )
@@ -358,7 +384,9 @@ fn build_counter_linkedin_user(
     regenerate_note: &str,
     length_directive: &str,
     input: &str,
+    profanity_mode: ProfanityMode,
 ) -> String {
+    let profanity_rule = profanity_rule(profanity_mode);
     format!(
         concat!(
             "Mode: LinkedIn -> CounterLinkedIn\n",
@@ -370,26 +398,26 @@ fn build_counter_linkedin_user(
             "Safety:\n",
             "- Apply a strict do-no-evil rule.\n",
             "- Avoid sexual or harmful content.\n",
-            "- No profanity.\n",
+            "- No racism or racial stereotypes.\n",
+            "- {profanity_rule}\n",
             "Output:\n",
             "- Return only the rewritten text.\n",
             "- No intro sentence. Start directly with the post.\n",
+            "- Do not wrap the whole output in quotation marks.\n",
+            "- Keep the casing normal and readable.\n",
             "- {length_directive}\n",
             "Source:\n{input}"
         ),
         regenerate_note = regenerate_note,
+        profanity_rule = profanity_rule,
         length_directive = length_directive,
         input = input
     )
 }
 
 pub fn sanitize_output(raw: &str, input: &str) -> (String, bool) {
-    let trimmed = raw
-        .trim()
-        .trim_matches('\"')
-        .trim_matches('\'')
-        .replace("\r\n", "\n");
-    let trimmed = strip_leading_framing(&trimmed);
+    let trimmed = raw.trim().replace("\r\n", "\n");
+    let trimmed = strip_wrapping_quotes(&strip_leading_framing(&trimmed));
     let max_chars = output_char_limit(input);
     let mut truncated = false;
     let mut output = String::new();
@@ -407,7 +435,7 @@ pub fn sanitize_output(raw: &str, input: &str) -> (String, bool) {
         output.push_str("...");
     }
 
-    (output.trim().to_string(), truncated)
+    (strip_wrapping_quotes(output.trim()), truncated)
 }
 
 fn strip_leading_framing(text: &str) -> String {
@@ -445,6 +473,36 @@ fn strip_leading_framing(text: &str) -> String {
         if !changed {
             break;
         }
+    }
+
+    value
+}
+
+fn strip_wrapping_quotes(text: &str) -> String {
+    let mut value = text.trim().to_string();
+
+    loop {
+        let chars: Vec<char> = value.chars().collect();
+        if chars.len() < 2 {
+            break;
+        }
+
+        let first = chars[0];
+        let last = chars[chars.len() - 1];
+        let matching = matches!(
+            (first, last),
+            ('"', '"') | ('\'', '\'') | ('“', '”') | ('‘', '’')
+        );
+
+        if !matching {
+            break;
+        }
+
+        value = chars[1..chars.len() - 1]
+            .iter()
+            .collect::<String>()
+            .trim()
+            .to_string();
     }
 
     value
@@ -494,13 +552,27 @@ pub fn intensity_band(intensity: u8) -> &'static str {
     }
 }
 
-fn intensity_directive(intensity: u8) -> &'static str {
+fn profanity_rule(profanity_mode: ProfanityMode) -> &'static str {
+    match profanity_mode {
+        ProfanityMode::Forbid => "No profanity.",
+        ProfanityMode::Allow => "Profanity is allowed when it genuinely improves the line. Do not force it into every sentence.",
+    }
+}
+
+fn intensity_directive(intensity: u8, profanity_mode: ProfanityMode) -> &'static str {
     match intensity {
         0..=20 => "Use dry candor. Let the mask slip a little, not all at once.",
         21..=40 => "Sharpen the subtext and make the professional facade noticeably unstable.",
         41..=60 => "Get bolder, stranger, and more CounterLinkedIn while staying semantically faithful.",
         61..=80 => "Make it feel obviously unpostable and fireable, but still controlled and intelligible.",
-        _ => "Push toward full HR-incident energy without profanity, fabricated facts, or outright malice.",
+        _ => match profanity_mode {
+            ProfanityMode::Forbid => {
+                "Push toward full HR-incident energy without profanity, fabricated facts, or outright malice."
+            }
+            ProfanityMode::Allow => {
+                "Push toward full HR-incident energy without fabricated facts or outright malice."
+            }
+        },
     }
 }
 
@@ -524,6 +596,7 @@ mod tests {
             input: "   ".to_string(),
             mode: TranslationMode::LinkedinToCounterLinkedin,
             intensity: 50,
+            profanity_mode: ProfanityMode::Forbid,
             regenerate: false,
         });
 
@@ -532,11 +605,29 @@ mod tests {
     }
 
     #[test]
+    fn validation_rejects_input_over_limit() {
+        let result = validate_request(TranslationRequest {
+            input: "x".repeat(MAX_INPUT_CHARS + 1),
+            mode: TranslationMode::LinkedinToCounterLinkedin,
+            intensity: 50,
+            profanity_mode: ProfanityMode::Forbid,
+            regenerate: false,
+        });
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().message,
+            format!("Input is capped at {MAX_INPUT_CHARS} characters.")
+        );
+    }
+
+    #[test]
     fn prompt_mentions_mode_specific_rules() {
         let request = TranslationRequest {
             input: "Thrilled to share that I joined Acme.".to_string(),
             mode: TranslationMode::LinkedinToCounterLinkedin,
             intensity: 70,
+            profanity_mode: ProfanityMode::Forbid,
             regenerate: false,
         };
 
@@ -546,10 +637,12 @@ mod tests {
         assert!(prompt.system.contains("Transformation rules:"));
         assert!(prompt.system.contains("Safety rules:"));
         assert!(prompt.system.contains("Output rules:"));
+        assert!(prompt.system.contains("No racism or racial stereotypes."));
         assert!(prompt.user.contains("LinkedIn -> CounterLinkedIn"));
         assert!(prompt.user.contains("Task:"));
         assert!(prompt.user.contains("Safety:"));
         assert!(prompt.user.contains("Output:"));
+        assert!(prompt.user.contains("Do not wrap the whole output in quotation marks."));
         assert!(prompt
             .user
             .contains("If the source is tiny, keep the rewrite tiny."));
@@ -561,12 +654,14 @@ mod tests {
             input: "We shipped a patch.".to_string(),
             mode: TranslationMode::LinkedinToCounterLinkedin,
             intensity: 10,
+            profanity_mode: ProfanityMode::Forbid,
             regenerate: false,
         });
         let severe = build_prompt(&TranslationRequest {
             input: "We shipped a patch.".to_string(),
             mode: TranslationMode::LinkedinToCounterLinkedin,
             intensity: 95,
+            profanity_mode: ProfanityMode::Forbid,
             regenerate: false,
         });
 
@@ -581,12 +676,14 @@ mod tests {
             input: "Tiny source.".to_string(),
             mode: TranslationMode::LinkedinToCounterLinkedin,
             intensity: 50,
+            profanity_mode: ProfanityMode::Forbid,
             regenerate: false,
         });
         let long = build_prompt(&TranslationRequest {
             input: "Paragraph. ".repeat(250),
             mode: TranslationMode::LinkedinToCounterLinkedin,
             intensity: 50,
+            profanity_mode: ProfanityMode::Forbid,
             regenerate: false,
         });
 
@@ -617,5 +714,30 @@ mod tests {
 
         assert!(!truncated);
         assert_eq!(output, source);
+    }
+
+    #[test]
+    fn sanitize_output_strips_balanced_wrapping_quotes() {
+        let input = "Shipped a thing.";
+        let (output, truncated) = sanitize_output("“This is still bad.”", input);
+
+        assert!(!truncated);
+        assert_eq!(output, "This is still bad.");
+    }
+
+    #[test]
+    fn allow_profanity_mode_removes_no_profanity_limit() {
+        let prompt = build_prompt(&TranslationRequest {
+            input: "Thrilled to announce my synergy journey.".to_string(),
+            mode: TranslationMode::LinkedinToCounterLinkedin,
+            intensity: 95,
+            profanity_mode: ProfanityMode::Allow,
+            regenerate: false,
+        });
+
+        assert!(prompt
+            .system
+            .contains("Profanity is allowed when it genuinely improves the line."));
+        assert!(!prompt.system.contains("without profanity"));
     }
 }

@@ -3,8 +3,8 @@ use std::rc::Rc;
 use leptos::{ev::KeyboardEvent, html::{Div, Textarea}, prelude::*, task::spawn_local};
 
 use crate::api::{
-    EntryStatusResponse, ErrorEnvelope, TranslationMode, TranslationRequest, TranslationResponse,
-    UsageSummary,
+    EntryStatusResponse, ErrorEnvelope, ProfanityMode, TranslationMode, TranslationRequest,
+    TranslationResponse, UsageSummary, MAX_INPUT_CHARS,
 };
 
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
@@ -24,6 +24,7 @@ pub fn HomePage() -> impl IntoView {
         TranslationMode::JobPostToHonest,
     ];
     let mode = RwSignal::new(TranslationMode::LinkedinToCounterLinkedin);
+    let profanity_mode = RwSignal::new(ProfanityMode::Forbid);
     let input = RwSignal::new(String::new());
     let output = RwSignal::new(String::new());
     let warnings = RwSignal::new(Vec::<String>::new());
@@ -60,6 +61,7 @@ pub fn HomePage() -> impl IntoView {
     let submit = Rc::new({
         let mode = mode;
         let input = input;
+        let profanity_mode = profanity_mode;
         let output = output;
         let warnings = warnings;
         let error = error;
@@ -97,6 +99,7 @@ pub fn HomePage() -> impl IntoView {
                     input: input.get_untracked(),
                     mode: mode.get_untracked(),
                     intensity: 70,
+                    profanity_mode: profanity_mode.get_untracked(),
                     regenerate: false,
                 }
             };
@@ -402,62 +405,6 @@ pub fn HomePage() -> impl IntoView {
                 </div>
             </header>
 
-            <div
-                class="entry-gate"
-                class:entry-gate--visible=move || entry_required.get() && !entry_granted.get()
-            >
-                <div class="entry-gate__scrim"></div>
-                <div class="entry-gate__card">
-                    <p class="entry-gate__eyebrow">"Human check"</p>
-                    <h2>"One gate at the door."</h2>
-                    <p class="entry-gate__copy">
-                        "Pass it once when you enter. The pre-generate interruption is gone."
-                    </p>
-                    <div node_ref=turnstile_mount class="entry-gate__widget"></div>
-                    <Show
-                        when=move || entry_loading.get()
-                        fallback=move || {
-                            if turnstile_script_state.get() == TurnstileScriptState::Failed {
-                                view! {
-                                    <div class="entry-gate__actions">
-                                        <p class="entry-gate__note">
-                                            "Human check failed to load. Retry to request it again."
-                                        </p>
-                                        <button
-                                            class="ghost-action ghost-action--quiet"
-                                            type="button"
-                                            on:click=move |_| {
-                                                turnstile_rendered.set(false);
-                                                turnstile_ready.set(false);
-                                                turnstile_token.set(None);
-                                                reset_turnstile_widget(
-                                                    turnstile_widget_id,
-                                                    turnstile_mount,
-                                                );
-                                                turnstile_script_state.set(TurnstileScriptState::Idle);
-                                                error.set(None);
-                                            }
-                                        >
-                                            "Retry"
-                                        </button>
-                                    </div>
-                                }
-                                    .into_any()
-                            } else {
-                                view! {
-                                    <Show when=move || error.get().is_some()>
-                                        <p class="entry-gate__note">{move || error.get().unwrap_or_default()}</p>
-                                    </Show>
-                                }
-                                    .into_any()
-                            }
-                        }
-                    >
-                        <p class="entry-gate__note">"Checking access..."</p>
-                    </Show>
-                </div>
-            </div>
-
             <section class="translator translator--google">
                 <div class="translator-bar">
                     <div class="mode-tabs mode-tabs--desktop">
@@ -513,6 +460,25 @@ pub fn HomePage() -> impl IntoView {
                             "Ctrl/Cmd + Enter"
                         }}
                     </p>
+                    <label class="profanity-toggle">
+                        <input
+                            type="checkbox"
+                            prop:checked=move || profanity_mode.get() == ProfanityMode::Allow
+                            on:change=move |ev| {
+                                profanity_mode.set(if event_target_checked(&ev) {
+                                    ProfanityMode::Allow
+                                } else {
+                                    ProfanityMode::Forbid
+                                });
+                            }
+                        />
+                        <span>
+                            {move || match profanity_mode.get() {
+                                ProfanityMode::Forbid => "Profanity blocked",
+                                ProfanityMode::Allow => "Profanity allowed",
+                            }}
+                        </span>
+                    </label>
                 </div>
 
                 <Show when=move || { usage.get().donation_prompt && !donation_dismissed.get() }>
@@ -530,6 +496,64 @@ pub fn HomePage() -> impl IntoView {
                         >
                             "Dismiss"
                         </button>
+                    </div>
+                </Show>
+
+                <Show when=move || entry_required.get() && !entry_granted.get()>
+                    <div class="entry-gate entry-gate--inline">
+                        <div class="entry-gate__card">
+                            <div class="entry-gate__header">
+                                <div>
+                                    <p class="entry-gate__eyebrow">"Human check"</p>
+                                    <h2>"Unlock translate once."</h2>
+                                </div>
+                                <p class="entry-gate__copy">
+                                    "One quick pass on the generate surface keeps abuse and token burn under control."
+                                </p>
+                            </div>
+                            <div node_ref=turnstile_mount class="entry-gate__widget"></div>
+                            <Show
+                                when=move || entry_loading.get()
+                                fallback=move || {
+                                    if turnstile_script_state.get() == TurnstileScriptState::Failed {
+                                        view! {
+                                            <div class="entry-gate__actions">
+                                                <p class="entry-gate__note">
+                                                    "Human check failed to load. Retry to request it again."
+                                                </p>
+                                                <button
+                                                    class="ghost-action ghost-action--quiet"
+                                                    type="button"
+                                                    on:click=move |_| {
+                                                        turnstile_rendered.set(false);
+                                                        turnstile_ready.set(false);
+                                                        turnstile_token.set(None);
+                                                        reset_turnstile_widget(
+                                                            turnstile_widget_id,
+                                                            turnstile_mount,
+                                                        );
+                                                        turnstile_script_state.set(TurnstileScriptState::Idle);
+                                                        error.set(None);
+                                                    }
+                                                >
+                                                    "Retry"
+                                                </button>
+                                            </div>
+                                        }
+                                            .into_any()
+                                    } else {
+                                        view! {
+                                            <p class="entry-gate__note">
+                                                "Complete the check once, then generate normally until the pass expires."
+                                            </p>
+                                        }
+                                            .into_any()
+                                    }
+                                }
+                            >
+                                <p class="entry-gate__note">"Checking access..."</p>
+                            </Show>
+                        </div>
                     </div>
                 </Show>
 
@@ -579,7 +603,7 @@ pub fn HomePage() -> impl IntoView {
                         <div class="editor-foot">
                             <p class="pane-direction">{move || mode.get().input_hint()}</p>
                             <span class="pane-meta">
-                                {move || format!("{} / 4000", input.get().chars().count())}
+                                {move || format!("{} / {}", input.get().chars().count(), MAX_INPUT_CHARS)}
                             </span>
                         </div>
                     </section>

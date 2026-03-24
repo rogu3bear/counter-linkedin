@@ -90,7 +90,7 @@ struct RecentRow {
 }
 
 pub fn requires_admin_auth(host: &str, path: &str) -> bool {
-    path.starts_with("/api/admin") && !host.eq_ignore_ascii_case("stats.counterlinkedin.com")
+    path.starts_with("/api/admin") || host.eq_ignore_ascii_case("stats.counterlinkedin.com")
 }
 
 pub fn rewrite_path_for_host(host: &str, path: &str) -> Option<&'static str> {
@@ -238,6 +238,22 @@ fn admin_not_configured() -> Response {
         "Admin credentials are not configured for metrics.",
     )
         .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::requires_admin_auth;
+
+    #[test]
+    fn stats_host_requires_auth_for_metrics_page() {
+        assert!(requires_admin_auth("stats.counterlinkedin.com", "/metrics"));
+        assert!(requires_admin_auth("stats.counterlinkedin.com", "/"));
+    }
+
+    #[test]
+    fn admin_api_requires_auth_on_primary_host() {
+        assert!(requires_admin_auth("counterlinkedin.com", "/api/admin/metrics"));
+    }
 }
 
 async fn metrics_inner(state: &AppState) -> Result<MetricsSnapshot, String> {

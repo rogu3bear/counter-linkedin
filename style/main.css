@@ -223,6 +223,27 @@ button {
   line-height: 1.35;
 }
 
+.profanity-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(207, 200, 191, 0.72);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink-soft);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.profanity-toggle input {
+  margin: 0;
+}
+
 .donation-banner {
   display: flex;
   align-items: center;
@@ -330,32 +351,27 @@ button {
 }
 
 .entry-gate {
-  position: fixed;
-  inset: 0;
-  display: none;
-  place-items: center;
-  z-index: 20;
+  border-bottom: 1px solid rgba(221, 216, 209, 0.82);
+  background: rgba(248, 244, 237, 0.9);
 }
 
-.entry-gate--visible {
-  display: grid;
-}
-
-.entry-gate__scrim {
-  position: absolute;
-  inset: 0;
-  background: rgba(244, 242, 238, 0.72);
-  backdrop-filter: blur(10px);
+.entry-gate--inline {
+  padding: 12px 14px;
 }
 
 .entry-gate__card {
-  position: relative;
-  z-index: 1;
-  width: min(100% - 24px, 420px);
+  width: 100%;
   padding: 24px;
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 24px 80px rgba(20, 20, 20, 0.12);
+}
+
+.entry-gate__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
 }
 
 .entry-gate__card h2 {
@@ -840,6 +856,10 @@ button {
     align-items: stretch;
   }
 
+  .profanity-toggle {
+    align-self: flex-start;
+  }
+
   .editor-foot {
     flex-direction: row;
     align-items: center;
@@ -884,8 +904,11 @@ button {
   }
 
   .entry-gate__card {
-    width: min(100% - 16px, 420px);
     padding: 20px;
+  }
+
+  .entry-gate__header {
+    flex-direction: column;
   }
 
   .translator {
