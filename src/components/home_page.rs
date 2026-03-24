@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use leptos::{ev::KeyboardEvent, html::Div, prelude::*, task::spawn_local};
+use leptos::{ev::KeyboardEvent, html::{Div, Textarea}, prelude::*, task::spawn_local};
 
 use crate::api::{
     EntryStatusResponse, ErrorEnvelope, TranslationMode, TranslationRequest, TranslationResponse,
@@ -18,6 +18,11 @@ enum TurnstileScriptState {
 
 #[component]
 pub fn HomePage() -> impl IntoView {
+    let mode_options = [
+        TranslationMode::LinkedinToCounterLinkedin,
+        TranslationMode::RawToLinkedin,
+        TranslationMode::JobPostToHonest,
+    ];
     let mode = RwSignal::new(TranslationMode::LinkedinToCounterLinkedin);
     let input = RwSignal::new(String::new());
     let output = RwSignal::new(String::new());
@@ -36,6 +41,7 @@ pub fn HomePage() -> impl IntoView {
     let turnstile_ready = RwSignal::new(false);
     let turnstile_site_key = RwSignal::new(read_turnstile_site_key());
     let turnstile_mount = NodeRef::<Div>::new();
+    let input_area = NodeRef::<Textarea>::new();
     let turnstile_rendered = RwSignal::new(false);
     let turnstile_widget_id = RwSignal::new(None::<String>);
     let turnstile_script_state = RwSignal::new(TurnstileScriptState::Idle);
@@ -43,6 +49,7 @@ pub fn HomePage() -> impl IntoView {
     #[cfg(not(target_arch = "wasm32"))]
     let _ = (
         turnstile_site_key,
+        input_area,
         entry_pass_in_flight,
         turnstile_rendered,
         turnstile_widget_id,
@@ -310,6 +317,17 @@ pub fn HomePage() -> impl IntoView {
 
     #[cfg(target_arch = "wasm32")]
     Effect::new({
+        let input = input;
+        let input_area = input_area;
+
+        move || {
+            let _ = input.get();
+            autosize_input_textarea(input_area);
+        }
+    });
+
+    #[cfg(target_arch = "wasm32")]
+    Effect::new({
         let turnstile_token = turnstile_token;
         let turnstile_ready = turnstile_ready;
         let entry_required = entry_required;
@@ -442,16 +460,9 @@ pub fn HomePage() -> impl IntoView {
 
             <section class="translator translator--google">
                 <div class="translator-bar">
-                    <div class="mode-tabs">
+                    <div class="mode-tabs mode-tabs--desktop">
                         <For
-                            each=move || {
-                                [
-                                    TranslationMode::LinkedinToCounterLinkedin,
-                                    TranslationMode::RawToLinkedin,
-                                    TranslationMode::JobPostToHonest,
-                                ]
-                                .into_iter()
-                            }
+                            each=move || mode_options.into_iter()
                             key=|item| *item as u8
                             children=move |item| {
                                 view! {
@@ -472,6 +483,29 @@ pub fn HomePage() -> impl IntoView {
                             }
                         />
                     </div>
+                    <label class="sr-only" for="mode-select">"Mode"</label>
+                    <select
+                        id="mode-select"
+                        class="mode-select"
+                        prop:value=move || mode_key(mode.get()).to_string()
+                        on:change=move |ev| {
+                            if let Some(selected_mode) = mode_from_key(&event_target_value(&ev)) {
+                                mode.set(selected_mode);
+                                copied.set(false);
+                                error.set(None);
+                            }
+                        }
+                    >
+                        <For
+                            each=move || mode_options.into_iter()
+                            key=|item| *item as u8
+                            children=move |item| {
+                                view! {
+                                    <option value=mode_key(item)>{item.output_button_label()}</option>
+                                }
+                            }
+                        />
+                    </select>
                     <p class="translator-note">
                         {move || if entry_required.get() && !entry_granted.get() {
                             "Pass the human check once to unlock the tool."
@@ -522,7 +556,8 @@ pub fn HomePage() -> impl IntoView {
                         <textarea
                             id="input-text"
                             class="translate-textarea"
-                            rows="12"
+                            node_ref=input_area
+                            rows="8"
                             placeholder=move || mode.get().placeholder()
                             prop:value=move || input.get()
                             on:input=move |ev| {
@@ -647,6 +682,56 @@ pub fn HomePage() -> impl IntoView {
         </main>
     }
 }
+
+fn mode_key(mode: TranslationMode) -> &'static str {
+    match mode {
+        TranslationMode::LinkedinToCounterLinkedin => "counterlinkedin",
+        TranslationMode::RawToLinkedin => "linkedin",
+        TranslationMode::JobPostToHonest => "honest",
+    }
+}
+
+fn mode_from_key(value: &str) -> Option<TranslationMode> {
+    match value {
+        "counterlinkedin" => Some(TranslationMode::LinkedinToCounterLinkedin),
+        "linkedin" => Some(TranslationMode::RawToLinkedin),
+        "honest" => Some(TranslationMode::JobPostToHonest),
+        _ => None,
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn autosize_input_textarea(input_area: NodeRef<Textarea>) {
+    let Some(textarea) = input_area.get() else {
+        return;
+    };
+
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+
+    let is_mobile = window
+        .inner_width()
+        .ok()
+        .and_then(|width| width.as_f64())
+        .map(|width| width <= 640.0)
+        .unwrap_or(false);
+
+    let style = textarea.style();
+
+    if !is_mobile {
+        let _ = style.remove_property("height");
+        return;
+    }
+
+    let _ = style.set_property("height", "auto");
+    let next_height = textarea.scroll_height().max(160);
+    let _ = style.set_property("height", &format!("{next_height}px"));
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+#[cfg(not(target_arch = "wasm32"))]
+fn autosize_input_textarea(_input_area: NodeRef<Textarea>) {}
 
 #[component]
 fn LoadingPane() -> impl IntoView {

@@ -152,6 +152,37 @@ button {
   flex-wrap: wrap;
 }
 
+.mode-select {
+  display: none;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 38px 0 12px;
+  border: 1px solid rgba(207, 200, 191, 0.9);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 242, 236, 0.98));
+  color: var(--ink);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 242, 236, 0.98)),
+    linear-gradient(45deg, transparent 50%, var(--ink-soft) 50%),
+    linear-gradient(135deg, var(--ink-soft) 50%, transparent 50%);
+  background-position:
+    0 0,
+    calc(100% - 18px) 15px,
+    calc(100% - 12px) 15px;
+  background-size:
+    100% 100%,
+    6px 6px,
+    6px 6px;
+  background-repeat: no-repeat;
+}
+
 .mode-tab,
 .pane-meta,
 .shortcut-note,
@@ -276,6 +307,7 @@ button {
 .translate-textarea:focus,
 .ghost-action:focus,
 .mode-tab:focus,
+.mode-select:focus,
 .primary-action:focus {
   outline: none;
 }
@@ -793,7 +825,7 @@ button {
   .output-copy,
   .output-empty,
   .loading-pane {
-    min-height: 220px;
+    min-height: 180px;
     padding-left: 14px;
     padding-right: 14px;
   }
@@ -867,8 +899,11 @@ button {
   }
 
   .mode-tabs {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: none;
+  }
+
+  .mode-select {
+    display: block;
     width: 100%;
   }
 
@@ -884,6 +919,11 @@ button {
 
   .translator-note {
     font-size: 0.76rem;
+  }
+
+  .translate-textarea {
+    min-height: 160px;
+    overflow-y: hidden;
   }
 
   .editor-head {
