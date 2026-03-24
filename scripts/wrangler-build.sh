@@ -5,17 +5,35 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ASSET_STASH_DIR="$ROOT_DIR/target/wrangler-assets"
 SITE_DIR="$ROOT_DIR/target/site"
 PKG_DIR="$SITE_DIR/pkg"
+REQUIRED_WASM_BINDGEN_VERSION="0.2.114"
+REQUIRED_WORKER_BUILD_MAJOR="0.7"
 
 cd "$ROOT_DIR"
 
-cargo install -q -f wasm-bindgen-cli --version 0.2.114
+ensure_cargo_binary() {
+  local command_name="$1"
+  local expected_version="$2"
+  shift 2
+
+  if command -v "$command_name" >/dev/null 2>&1; then
+    local current_version
+    current_version="$("$command_name" --version 2>/dev/null || true)"
+    if [[ "$current_version" == *"$expected_version"* ]]; then
+      return
+    fi
+  fi
+
+  cargo install -q "$@"
+}
+
+ensure_cargo_binary wasm-bindgen "$REQUIRED_WASM_BINDGEN_VERSION" -f wasm-bindgen-cli --version "$REQUIRED_WASM_BINDGEN_VERSION"
 cargo leptos build --release
 
 rm -rf "$ASSET_STASH_DIR"
 mkdir -p "$ASSET_STASH_DIR"
 cp -R "$PKG_DIR" "$ASSET_STASH_DIR/pkg"
 
-cargo install -q "worker-build@^0.7"
+ensure_cargo_binary worker-build "$REQUIRED_WORKER_BUILD_MAJOR" "worker-build@^${REQUIRED_WORKER_BUILD_MAJOR}"
 worker-build --release --features ssr
 
 # worker-build's recovery path may call __wbindgen_start() even when the

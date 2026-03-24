@@ -251,28 +251,9 @@ pub fn build_prompt(request: &TranslationRequest) -> PromptBundle {
     };
 
     let system = match request.mode {
-        TranslationMode::LinkedinToCounterLinkedin => format!(
-            concat!(
-                "You write in CounterLinkedIn.\n",
-                "Take polished LinkedIn language and mutate it into fireable, unhinged, anti-LinkedIn copy.\n",
-                "It should still look like something a person would be fired for if they posted it on LinkedIn.\n",
-                "Preserve the exact semantic core.\n",
-                "Keep it short, sharp, witty, and distinctly CounterLinkedIn.\n",
-                "Do not add facts, allegations, or backstory.\n",
-                "Ask: am I saying something evil?\n",
-                "If yes, do not say it.\n",
-                "Do no evil.\n",
-                "Avoid sexual or harmful content.\n",
-                "No profanity.\n",
-                "No evil.\n",
-                "No cruelty, harassment, threats, or slurs.\n",
-                "Do not become generic insult-comedy.\n",
-                "No prefacing or labels.\n",
-                "Current intensity band: {intensity_band}. {intensity_directive}"
-            ),
-            intensity_band = intensity_band,
-            intensity_directive = intensity_directive
-        ),
+        TranslationMode::LinkedinToCounterLinkedin => {
+            build_counter_linkedin_system(intensity_band, intensity_directive)
+        }
         TranslationMode::RawToLinkedin => format!(
             concat!(
                 "You turn blunt human thoughts into polished, status-safe LinkedIn language.\n",
@@ -302,23 +283,10 @@ pub fn build_prompt(request: &TranslationRequest) -> PromptBundle {
     };
 
     let user = match request.mode {
-        TranslationMode::LinkedinToCounterLinkedin => format!(
-            concat!(
-                "Mode: LinkedIn -> CounterLinkedIn\n",
-                "{regenerate_note}\n",
-                "Mutate the content into fireable, unhinged, and ruthlessly LinkedIn-inappropriate copy.\n",
-                "Make it feel post-shaped, like someone would be fired for posting it on LinkedIn.\n",
-                "Then apply a strict do-no-evil rule.\n",
-                "Avoid sexual or harmful content.\n",
-                "No profanity.\n",
-                "Return only the rewritten text.\n",
-                "No intro sentence. Start directly with the post.\n",
-                "{length_directive}\n",
-                "Source:\n{input}"
-            ),
-            regenerate_note = regenerate_note,
-            length_directive = length_directive,
-            input = request.input
+        TranslationMode::LinkedinToCounterLinkedin => build_counter_linkedin_user(
+            regenerate_note,
+            length_directive,
+            &request.input,
         ),
         TranslationMode::RawToLinkedin => format!(
             concat!(
@@ -354,6 +322,65 @@ pub fn build_prompt(request: &TranslationRequest) -> PromptBundle {
         max_tokens: output_token_limit(&request.input),
         temperature: temperature_for(request.intensity),
     }
+}
+
+fn build_counter_linkedin_system(
+    intensity_band: &str,
+    intensity_directive: &str,
+) -> String {
+    format!(
+        concat!(
+            "You write in CounterLinkedIn.\n",
+            "Role: mutate polished LinkedIn language into fireable, unhinged, anti-LinkedIn copy.\n",
+            "Transformation rules:\n",
+            "- Preserve the exact semantic core.\n",
+            "- Keep it short, sharp, witty, and distinctly CounterLinkedIn.\n",
+            "- It should still look like something a person would be fired for if they posted it on LinkedIn.\n",
+            "- Do not add facts, allegations, or backstory.\n",
+            "- Do not become generic insult-comedy.\n",
+            "Safety rules:\n",
+            "- Ask: am I saying something evil?\n",
+            "- If yes, do not say it.\n",
+            "- Do no evil.\n",
+            "- Avoid sexual or harmful content.\n",
+            "- No profanity.\n",
+            "- No cruelty, harassment, threats, or slurs.\n",
+            "Output rules:\n",
+            "- No prefacing or labels.\n",
+            "Current intensity band: {intensity_band}. {intensity_directive}"
+        ),
+        intensity_band = intensity_band,
+        intensity_directive = intensity_directive
+    )
+}
+
+fn build_counter_linkedin_user(
+    regenerate_note: &str,
+    length_directive: &str,
+    input: &str,
+) -> String {
+    format!(
+        concat!(
+            "Mode: LinkedIn -> CounterLinkedIn\n",
+            "{regenerate_note}\n",
+            "Task:\n",
+            "- Mutate the content into fireable, unhinged, and ruthlessly LinkedIn-inappropriate copy.\n",
+            "- Make it feel post-shaped, like someone would be fired for posting it on LinkedIn.\n",
+            "- Keep the original meaning intact while changing the social mask.\n",
+            "Safety:\n",
+            "- Apply a strict do-no-evil rule.\n",
+            "- Avoid sexual or harmful content.\n",
+            "- No profanity.\n",
+            "Output:\n",
+            "- Return only the rewritten text.\n",
+            "- No intro sentence. Start directly with the post.\n",
+            "- {length_directive}\n",
+            "Source:\n{input}"
+        ),
+        regenerate_note = regenerate_note,
+        length_directive = length_directive,
+        input = input
+    )
 }
 
 pub fn sanitize_output(raw: &str, input: &str) -> (String, bool) {
@@ -516,10 +543,60 @@ mod tests {
         let prompt = build_prompt(&request);
 
         assert!(prompt.system.contains("You write in CounterLinkedIn."));
+        assert!(prompt.system.contains("Transformation rules:"));
+        assert!(prompt.system.contains("Safety rules:"));
+        assert!(prompt.system.contains("Output rules:"));
         assert!(prompt.user.contains("LinkedIn -> CounterLinkedIn"));
+        assert!(prompt.user.contains("Task:"));
+        assert!(prompt.user.contains("Safety:"));
+        assert!(prompt.user.contains("Output:"));
         assert!(prompt
             .user
             .contains("If the source is tiny, keep the rewrite tiny."));
+    }
+
+    #[test]
+    fn intensity_changes_temperature_and_prompt_band() {
+        let mild = build_prompt(&TranslationRequest {
+            input: "We shipped a patch.".to_string(),
+            mode: TranslationMode::LinkedinToCounterLinkedin,
+            intensity: 10,
+            regenerate: false,
+        });
+        let severe = build_prompt(&TranslationRequest {
+            input: "We shipped a patch.".to_string(),
+            mode: TranslationMode::LinkedinToCounterLinkedin,
+            intensity: 95,
+            regenerate: false,
+        });
+
+        assert!(mild.system.contains("mild candidness"));
+        assert!(severe.system.contains("HR incident"));
+        assert!(mild.temperature < severe.temperature);
+    }
+
+    #[test]
+    fn shorter_inputs_receive_tighter_output_limits() {
+        let short = build_prompt(&TranslationRequest {
+            input: "Tiny source.".to_string(),
+            mode: TranslationMode::LinkedinToCounterLinkedin,
+            intensity: 50,
+            regenerate: false,
+        });
+        let long = build_prompt(&TranslationRequest {
+            input: "Paragraph. ".repeat(250),
+            mode: TranslationMode::LinkedinToCounterLinkedin,
+            intensity: 50,
+            regenerate: false,
+        });
+
+        assert!(short.max_tokens < long.max_tokens);
+        assert!(short
+            .user
+            .contains("If the source is tiny, keep the rewrite tiny."));
+        assert!(long
+            .user
+            .contains("If the source is multiple paragraphs, keep it multiple paragraphs"));
     }
 
     #[test]
