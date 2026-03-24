@@ -79,7 +79,7 @@ Security and admin bindings:
 
 Production note:
 
-- `stats.indeknil.com` is intended to sit behind Cloudflare Access with an allow policy for `@mlnavigator.com`
+- `stats.counterlinkedin.com` is intended to sit behind Cloudflare Access with an allow policy for `@mlnavigator.com`
 
 ## Local development
 
@@ -112,7 +112,7 @@ Wrangler runs the configured build command:
 
 The translation endpoint lives at `/api/translate`.
 
-The internal metrics endpoint lives at `/api/admin/metrics` and is intended to be viewed through `stats.indeknil.com`.
+The internal metrics endpoint lives at `/api/admin/metrics` and is intended to be viewed through `stats.counterlinkedin.com`.
 
 Server flow:
 
@@ -181,7 +181,7 @@ The main hook points for future abuse controls are:
 - The app uses a direct JSON endpoint instead of Leptos server functions for generation so the Worker can inspect headers for IP-based throttling cleanly.
 - D1 now stores both the throttle ledger and a full generation ledger: input text, output text, mode, token usage, latency, and estimated cost.
 - Cost numbers are estimates computed from Workers AI token usage and the configured per-million prices. They are useful for ops, but they are not a substitute for Cloudflare invoice truth.
-- `stats.indeknil.com` is served by the same Worker. The root path is rewritten to `/metrics`, and production access is enforced at the edge with Cloudflare Access.
+- `stats.counterlinkedin.com` is served by the same Worker. The root path is rewritten to `/metrics`, and production access is enforced at the edge with Cloudflare Access.
 - Prompt construction stays in shared Rust code so the UI and server agree on mode names, limits, and output expectations.
 
 ## Intentionally out of scope

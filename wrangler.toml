@@ -2,8 +2,8 @@ name = "counter-linkedin"
 main = "build/index.js"
 compatibility_date = "2026-03-20"
 routes = [
-  { pattern = "indeknil.com", custom_domain = true },
-  { pattern = "stats.indeknil.com", custom_domain = true }
+  { pattern = "counterlinkedin.com", custom_domain = true },
+  { pattern = "stats.counterlinkedin.com", custom_domain = true }
 ]
 
 [build]

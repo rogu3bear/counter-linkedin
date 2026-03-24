@@ -90,11 +90,11 @@ struct RecentRow {
 }
 
 pub fn requires_admin_auth(host: &str, path: &str) -> bool {
-    path.starts_with("/api/admin") && !host.eq_ignore_ascii_case("stats.indeknil.com")
+    path.starts_with("/api/admin") && !host.eq_ignore_ascii_case("stats.counterlinkedin.com")
 }
 
 pub fn rewrite_path_for_host(host: &str, path: &str) -> Option<&'static str> {
-    if host.eq_ignore_ascii_case("stats.indeknil.com") && path == "/" {
+    if host.eq_ignore_ascii_case("stats.counterlinkedin.com") && path == "/" {
         Some("/metrics")
     } else {
         None
