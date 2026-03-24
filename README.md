@@ -74,12 +74,11 @@ Security and admin bindings:
 - `TURNSTILE_SITE_KEY`: public site key rendered in the browser for the Cloudflare human check
 - `TURNSTILE_SECRET`: secret used for server-side `siteverify`
 - `RATE_LIMIT_BYPASS_IPS`: optional comma-separated IPs exempt from the quota and cooldown
-- `ADMIN_USERNAME`: legacy fallback for protecting the metrics dashboard and admin API outside Cloudflare Access
-- `ADMIN_PASSWORD`: legacy fallback for protecting the metrics dashboard and admin API outside Cloudflare Access
 
 Production note:
 
 - `stats.counterlinkedin.com` is intended to sit behind Cloudflare Access with an allow policy for `@mlnavigator.com`
+- the Worker expects Cloudflare Access headers on stats-host requests; it no longer falls back to basic auth
 
 ## Local development
 
@@ -162,10 +161,10 @@ If you switch to a model with different token pricing, update `AI_INPUT_COST_PER
 
 Current controls:
 
-- input capped at 4,000 characters
+- input capped at 1,500 characters
 - output trimmed to a compact maximum
 - client disables duplicate submissions while a request is in flight
-- Cloudflare Turnstile human check enforced server-side before generation
+- Cloudflare Turnstile human check enforced server-side before generation, with a one-time inline gate on the translator surface
 - D1-backed per-IP cooldown and rolling-window throttle
 - hard cap of 25 runs per rolling 24-hour window per client fingerprint
 - regenerate goes through the same throttle path as generate
@@ -181,7 +180,7 @@ The main hook points for future abuse controls are:
 - The app uses a direct JSON endpoint instead of Leptos server functions for generation so the Worker can inspect headers for IP-based throttling cleanly.
 - D1 now stores both the throttle ledger and a full generation ledger: input text, output text, mode, token usage, latency, and estimated cost.
 - Cost numbers are estimates computed from Workers AI token usage and the configured per-million prices. They are useful for ops, but they are not a substitute for Cloudflare invoice truth.
-- `stats.counterlinkedin.com` is served by the same Worker. The root path is rewritten to `/metrics`, and production access is enforced at the edge with Cloudflare Access.
+- `stats.counterlinkedin.com` is served by the same Worker. The root path is rewritten to `/metrics`, and the app now expects Cloudflare Access headers there instead of offering a basic-auth fallback.
 - Prompt construction stays in shared Rust code so the UI and server agree on mode names, limits, and output expectations.
 
 ## Intentionally out of scope

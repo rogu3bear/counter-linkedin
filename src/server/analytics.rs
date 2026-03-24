@@ -1,10 +1,9 @@
 use axum::{
     extract::State,
-    http::{header, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
-use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::Deserialize;
 use worker::D1Type;
 
@@ -101,29 +100,23 @@ pub fn rewrite_path_for_host(host: &str, path: &str) -> Option<&'static str> {
     }
 }
 
-pub fn authorize(headers: &HeaderMap, state: &AppState) -> Result<(), Response> {
-    let username = state.admin_username().ok_or_else(admin_not_configured)?;
-    let password = state.admin_password().ok_or_else(admin_not_configured)?;
-    let Some(value) = headers.get(header::AUTHORIZATION).and_then(|value| value.to_str().ok()) else {
-        return Err(auth_challenge());
-    };
-    let Some(encoded) = value.strip_prefix("Basic ") else {
-        return Err(auth_challenge());
-    };
-    let Ok(decoded) = STANDARD.decode(encoded) else {
-        return Err(auth_challenge());
-    };
-    let Ok(decoded) = String::from_utf8(decoded) else {
-        return Err(auth_challenge());
-    };
-    let Some((candidate_user, candidate_password)) = decoded.split_once(':') else {
-        return Err(auth_challenge());
-    };
+pub fn authorize(headers: &HeaderMap) -> Result<(), Response> {
+    let has_access_jwt = headers
+        .get("cf-access-jwt-assertion")
+        .and_then(|value| value.to_str().ok())
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
 
-    if candidate_user == username && candidate_password == password {
+    let has_access_email = headers
+        .get("cf-access-authenticated-user-email")
+        .and_then(|value| value.to_str().ok())
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+
+    if has_access_jwt || has_access_email {
         Ok(())
     } else {
-        Err(auth_challenge())
+        Err(access_required())
     }
 }
 
@@ -223,26 +216,19 @@ fn mode_string(mode: TranslationMode) -> String {
         .to_string()
 }
 
-fn auth_challenge() -> Response {
+fn access_required() -> Response {
     (
-        StatusCode::UNAUTHORIZED,
-        [(header::WWW_AUTHENTICATE, "Basic realm=\"CounterLinkedIn Metrics\"")],
-        "Authentication required.",
-    )
-        .into_response()
-}
-
-fn admin_not_configured() -> Response {
-    (
-        StatusCode::SERVICE_UNAVAILABLE,
-        "Admin credentials are not configured for metrics.",
+        StatusCode::FORBIDDEN,
+        "Cloudflare Access authentication required for metrics.",
     )
         .into_response()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::requires_admin_auth;
+    use axum::http::{HeaderMap, HeaderValue, StatusCode};
+
+    use super::{authorize, requires_admin_auth};
 
     #[test]
     fn stats_host_requires_auth_for_metrics_page() {
@@ -253,6 +239,25 @@ mod tests {
     #[test]
     fn admin_api_requires_auth_on_primary_host() {
         assert!(requires_admin_auth("counterlinkedin.com", "/api/admin/metrics"));
+    }
+
+    #[test]
+    fn cloudflare_access_headers_authorize_metrics() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "cf-access-jwt-assertion",
+            HeaderValue::from_static("token"),
+        );
+
+        assert!(authorize(&headers).is_ok());
+    }
+
+    #[test]
+    fn missing_cloudflare_access_headers_are_forbidden() {
+        let headers = HeaderMap::new();
+        let response = authorize(&headers).unwrap_err();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
 }
 

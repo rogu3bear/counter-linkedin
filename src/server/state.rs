@@ -82,22 +82,6 @@ impl AppState {
             .unwrap_or_else(|| default_model_pricing(&self.model_name()).1)
     }
 
-    pub fn admin_username(&self) -> Option<String> {
-        self.env
-            .secret("ADMIN_USERNAME")
-            .ok()
-            .or_else(|| self.env.var("ADMIN_USERNAME").ok())
-            .map(|value| value.to_string())
-    }
-
-    pub fn admin_password(&self) -> Option<String> {
-        self.env
-            .secret("ADMIN_PASSWORD")
-            .ok()
-            .or_else(|| self.env.var("ADMIN_PASSWORD").ok())
-            .map(|value| value.to_string())
-    }
-
     pub fn rate_limit_bypass_ips(&self) -> Vec<String> {
         self.env
             .secret("RATE_LIMIT_BYPASS_IPS")
