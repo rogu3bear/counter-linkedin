@@ -333,6 +333,16 @@ button {
   outline: none;
 }
 
+.translate-textarea:focus-visible,
+.ghost-action:focus-visible,
+.mode-tab:focus-visible,
+.mode-select:focus-visible,
+.primary-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
+
 .translate-textarea::placeholder {
   color: #8a847d;
 }
