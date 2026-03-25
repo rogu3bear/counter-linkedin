@@ -486,7 +486,16 @@ pub fn HomePage() -> impl IntoView {
                         <div class="donation-banner__copy">
                             <p class="donation-banner__eyebrow">"Approaching 10 runs"</p>
                             <p class="donation-banner__text">
-                                "CounterLinkedIn runs on Workers AI. If it's useful, consider buying the project a coffee."
+                                "CounterLinkedIn runs on Workers AI. "
+                                <a
+                                    href="https://buymeacoffee.com/counterlinkedin"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    class="donation-banner__link"
+                                >
+                                    "Buy the project a coffee"
+                                </a>
+                                " if it's useful."
                             </p>
                         </div>
                         <button
@@ -664,7 +673,7 @@ pub fn HomePage() -> impl IntoView {
                                     }
                                         .into_any()
                                 } else {
-                                    view! { <div></div> }.into_any()
+                                    view! {}.into_any()
                                 }
                             }
                         >
