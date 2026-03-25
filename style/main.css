@@ -11,6 +11,9 @@
   --accent: #c81d25;
   --accent-soft: rgba(200, 29, 37, 0.08);
   --accent-line: rgba(200, 29, 37, 0.22);
+  --error: #b51a22;
+  --error-soft: rgba(181, 26, 34, 0.07);
+  --error-line: rgba(181, 26, 34, 0.2);
   --lift: 0 16px 46px rgba(20, 20, 20, 0.045);
   --shadow: 0 16px 42px rgba(20, 20, 20, 0.06);
   --radius-xl: 28px;
@@ -434,7 +437,7 @@ button {
 .primary-action {
   background: var(--accent);
   color: #fff;
-  box-shadow: 0 14px 30px rgba(200, 29, 37, 0.24);
+  box-shadow: 0 12px 28px rgba(180, 22, 30, 0.32);
   cursor: pointer;
 }
 
@@ -451,9 +454,19 @@ button {
   background: rgba(255, 255, 255, 0.58);
 }
 
-.primary-action:hover:not(:disabled),
-.ghost-action:hover:not(:disabled),
+.primary-action:hover:not(:disabled) {
+  background: #b51a22;
+  transform: translateY(-1px);
+}
+
+.ghost-action:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(207, 200, 191, 1);
+  transform: translateY(-1px);
+}
+
 .mode-tab:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.8);
   transform: translateY(-1px);
 }
 
@@ -514,9 +527,9 @@ button {
 }
 
 .feedback--error {
-  border: 1px solid rgba(200, 29, 37, 0.18);
-  background: rgba(200, 29, 37, 0.06);
-  color: #9b1621;
+  border: 1px solid var(--error-line);
+  background: var(--error-soft);
+  color: var(--error);
 }
 
 .warning-list {
@@ -755,8 +768,8 @@ button {
 .status-pill--bad_request,
 .status-pill--upstream_failure,
 .status-pill--internal_error {
-  border-color: rgba(200, 29, 37, 0.16);
-  background: rgba(200, 29, 37, 0.05);
+  border-color: var(--error-line);
+  background: var(--error-soft);
 }
 
 .sr-only {
@@ -944,7 +957,7 @@ button {
     min-height: 36px;
     padding: 0 8px;
     border-radius: 9px;
-    font-size: clamp(0.62rem, 2.7vw, 0.72rem);
+    font-size: clamp(0.68rem, 2.7vw, 0.72rem);
     letter-spacing: 0.03em;
     line-height: 1.05;
     text-align: center;
@@ -972,7 +985,7 @@ button {
   .output-empty__label,
   .pane-meta,
   .shortcut-note {
-    font-size: 0.69rem;
+    font-size: 0.75rem;
   }
 
   .metrics-page {
@@ -1025,7 +1038,7 @@ button {
   }
 
   .brand-copy h1 {
-    font-size: 4.4rem;
+    font-size: clamp(1.9rem, 2.8vw, 4.4rem);
   }
 
   .translate-textarea,

@@ -1,4 +1,5 @@
 use leptos::prelude::*;
+use leptos_meta::{Meta, Title};
 
 use crate::api::{MetricsSnapshot, ModeMetrics, RecentGeneration};
 
@@ -8,6 +9,11 @@ pub fn MetricsPage() -> impl IntoView {
 
     view! {
         <main class="metrics-page">
+            <Title text="Metrics — CounterLinkedIn"/>
+            <Meta
+                name="description"
+                content="Usage, spend, and generation analytics for CounterLinkedIn."
+            />
             <header class="metrics-header">
                 <div class="brand">
                     <div class="brand-mark" aria-hidden="true">

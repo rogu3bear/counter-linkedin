@@ -45,15 +45,27 @@ pub enum ProfanityMode {
 
 impl TranslationMode {
     pub fn input_label(self) -> &'static str {
-        "Paste the text."
+        match self {
+            Self::LinkedinToCounterLinkedin => "Paste a LinkedIn post or update.",
+            Self::RawToLinkedin => "Paste your blunt draft.",
+            Self::JobPostToHonest => "Paste a job post or recruiter message.",
+        }
     }
 
     pub fn input_hint(self) -> &'static str {
-        "Choose the mode above, then paste the text."
+        match self {
+            Self::LinkedinToCounterLinkedin => "Paste a polished post. Get the fireable version.",
+            Self::RawToLinkedin => "Paste the unfiltered thought. Get LinkedIn-safe copy.",
+            Self::JobPostToHonest => "Paste the listing. Get the subtext.",
+        }
     }
 
     pub fn placeholder(self) -> &'static str {
-        "Paste the text."
+        match self {
+            Self::LinkedinToCounterLinkedin => "Thrilled to announce that I've joined...",
+            Self::RawToLinkedin => "My boss has no idea what he's doing...",
+            Self::JobPostToHonest => "We're looking for a rockstar engineer who thrives in ambiguity...",
+        }
     }
 
     pub fn output_button_label(self) -> &'static str {
