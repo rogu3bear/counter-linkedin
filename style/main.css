@@ -27,7 +27,7 @@
 html {
   background: linear-gradient(180deg, #f8f5ef 0%, var(--bg) 42%, #ede7de 100%);
   color: var(--ink);
-  font-family: "Instrument Sans", "Avenir Next", "Helvetica Neue", sans-serif;
+  font-family: "Avenir Next", "Helvetica Neue", system-ui, sans-serif;
 }
 
 body {
