@@ -486,7 +486,7 @@ pub fn HomePage() -> impl IntoView {
                         <div class="donation-banner__copy">
                             <p class="donation-banner__eyebrow">"Approaching 10 runs"</p>
                             <p class="donation-banner__text">
-                                "Placeholder donation prompt. Add the real ask later."
+                                "CounterLinkedIn runs on Workers AI. If it's useful, consider buying the project a coffee."
                             </p>
                         </div>
                         <button
@@ -649,21 +649,22 @@ pub fn HomePage() -> impl IntoView {
                         <Show
                             when=move || in_flight.get()
                             fallback=move || {
-                                if output.get().trim().is_empty() {
+                                if output.get().trim().is_empty() && error.get().is_none() {
                                     view! {
                                         <div class="output-empty">
-                                            <p class="output-empty__label">"Result"</p>
                                             <p class="output-empty__copy">{move || empty_state_copy(mode.get())}</p>
                                         </div>
                                     }
                                         .into_any()
-                                } else {
+                                } else if !output.get().trim().is_empty() {
                                     view! {
                                         <div class="output-copy" aria-live="polite">
                                             {move || output.get()}
                                         </div>
                                     }
                                         .into_any()
+                                } else {
+                                    view! { <div></div> }.into_any()
                                 }
                             }
                         >
