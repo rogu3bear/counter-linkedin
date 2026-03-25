@@ -33,7 +33,7 @@ async fn fetch(
     let path = req.uri().path().to_string();
 
     if server::analytics::requires_admin_auth(&host, &path) {
-        if let Err(response) = server::analytics::authorize(&headers) {
+        if let Err(response) = server::access::authorize(&headers, &state).await {
             return Ok(response);
         }
     }

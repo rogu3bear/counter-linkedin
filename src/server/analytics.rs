@@ -1,6 +1,6 @@
 use axum::{
     extract::State,
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::{IntoResponse, Response},
     Json,
 };
@@ -100,26 +100,6 @@ pub fn rewrite_path_for_host(host: &str, path: &str) -> Option<&'static str> {
     }
 }
 
-pub fn authorize(headers: &HeaderMap) -> Result<(), Response> {
-    let has_access_jwt = headers
-        .get("cf-access-jwt-assertion")
-        .and_then(|value| value.to_str().ok())
-        .map(|value| !value.trim().is_empty())
-        .unwrap_or(false);
-
-    let has_access_email = headers
-        .get("cf-access-authenticated-user-email")
-        .and_then(|value| value.to_str().ok())
-        .map(|value| !value.trim().is_empty())
-        .unwrap_or(false);
-
-    if has_access_jwt || has_access_email {
-        Ok(())
-    } else {
-        Err(access_required())
-    }
-}
-
 pub async fn metrics(State(state): State<AppState>) -> Response {
     send_wrapper::SendWrapper::new(async move {
         let snapshot = match metrics_inner(&state).await {
@@ -216,19 +196,9 @@ fn mode_string(mode: TranslationMode) -> String {
         .to_string()
 }
 
-fn access_required() -> Response {
-    (
-        StatusCode::FORBIDDEN,
-        "Cloudflare Access authentication required for metrics.",
-    )
-        .into_response()
-}
-
 #[cfg(test)]
 mod tests {
-    use axum::http::{HeaderMap, HeaderValue, StatusCode};
-
-    use super::{authorize, requires_admin_auth};
+    use super::requires_admin_auth;
 
     #[test]
     fn stats_host_requires_auth_for_metrics_page() {
@@ -239,25 +209,6 @@ mod tests {
     #[test]
     fn admin_api_requires_auth_on_primary_host() {
         assert!(requires_admin_auth("counterlinkedin.com", "/api/admin/metrics"));
-    }
-
-    #[test]
-    fn cloudflare_access_headers_authorize_metrics() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "cf-access-jwt-assertion",
-            HeaderValue::from_static("token"),
-        );
-
-        assert!(authorize(&headers).is_ok());
-    }
-
-    #[test]
-    fn missing_cloudflare_access_headers_are_forbidden() {
-        let headers = HeaderMap::new();
-        let response = authorize(&headers).unwrap_err();
-
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
 }
 

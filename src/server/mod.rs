@@ -1,3 +1,4 @@
+pub mod access;
 pub mod analytics;
 pub mod entry;
 pub mod rate_limit;

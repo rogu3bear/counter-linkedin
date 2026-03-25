@@ -66,6 +66,22 @@ impl AppState {
             .map(|value| value.to_string())
     }
 
+    pub fn cf_access_team_domain(&self) -> Option<String> {
+        self.env
+            .secret("CF_ACCESS_TEAM_DOMAIN")
+            .ok()
+            .or_else(|| self.env.var("CF_ACCESS_TEAM_DOMAIN").ok())
+            .map(|value| value.to_string())
+    }
+
+    pub fn cf_access_aud(&self) -> Option<String> {
+        self.env
+            .secret("CF_ACCESS_AUD")
+            .ok()
+            .or_else(|| self.env.var("CF_ACCESS_AUD").ok())
+            .map(|value| value.to_string())
+    }
+
     pub fn input_cost_per_million_usd(&self) -> f64 {
         self.env
             .var("AI_INPUT_COST_PER_MILLION_USD")

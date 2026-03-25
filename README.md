@@ -74,11 +74,13 @@ Security and admin bindings:
 - `TURNSTILE_SITE_KEY`: public site key rendered in the browser for the Cloudflare human check
 - `TURNSTILE_SECRET`: secret used for server-side `siteverify`
 - `RATE_LIMIT_BYPASS_IPS`: optional comma-separated IPs exempt from the quota and cooldown
+- `CF_ACCESS_TEAM_DOMAIN`: Cloudflare Access team domain or team slug used to fetch the Access JWKS
+- `CF_ACCESS_AUD`: expected Cloudflare Access audience for the stats application
 
 Production note:
 
 - `stats.counterlinkedin.com` is intended to sit behind Cloudflare Access with an allow policy for `@mlnavigator.com`
-- the Worker expects Cloudflare Access headers on stats-host requests; it no longer falls back to basic auth
+- the Worker validates `Cf-Access-Jwt-Assertion` against Cloudflare Access certs and no longer falls back to basic auth
 
 ## Local development
 
@@ -180,7 +182,7 @@ The main hook points for future abuse controls are:
 - The app uses a direct JSON endpoint instead of Leptos server functions for generation so the Worker can inspect headers for IP-based throttling cleanly.
 - D1 now stores both the throttle ledger and a full generation ledger: input text, output text, mode, token usage, latency, and estimated cost.
 - Cost numbers are estimates computed from Workers AI token usage and the configured per-million prices. They are useful for ops, but they are not a substitute for Cloudflare invoice truth.
-- `stats.counterlinkedin.com` is served by the same Worker. The root path is rewritten to `/metrics`, and the app now expects Cloudflare Access headers there instead of offering a basic-auth fallback.
+- `stats.counterlinkedin.com` is served by the same Worker. The root path is rewritten to `/metrics`, and the app now validates the Cloudflare Access JWT there instead of offering a basic-auth fallback.
 - Prompt construction stays in shared Rust code so the UI and server agree on mode names, limits, and output expectations.
 
 ## Intentionally out of scope
