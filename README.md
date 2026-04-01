@@ -1,6 +1,6 @@
 # CounterLinkedIn
 
-**2025 – 2025**
+**2025 – 2026**
 
 CounterLinkedIn was a single-screen web app that translated polished professional language into brutally honest plain English — and back again when needed.
 

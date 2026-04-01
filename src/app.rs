@@ -58,7 +58,7 @@ pub fn App() -> impl IntoView {
                     "CounterLinkedIn"
                 </h1>
                 <p style="color: var(--ink-soft); font-size: 1.05rem; margin: 0 0 32px; letter-spacing: -0.01em;">
-                    "2025 \u{2013} 2025"
+                    "2025 \u{2013} 2026"
                 </p>
 
                 <div class="translator" style="text-align: left; padding: 28px; margin-bottom: 28px;">
