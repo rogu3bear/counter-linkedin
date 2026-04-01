@@ -2,8 +2,7 @@ name = "counter-linkedin"
 main = "build/index.js"
 compatibility_date = "2026-03-20"
 routes = [
-  { pattern = "counterlinkedin.com", custom_domain = true },
-  { pattern = "stats.counterlinkedin.com", custom_domain = true }
+  { pattern = "counterlinkedin.com", custom_domain = true }
 ]
 
 [build]
@@ -12,18 +11,4 @@ command = "./scripts/wrangler-build.sh"
 [assets]
 directory = "./target/site"
 
-[ai]
-binding = "AI"
-
 [vars]
-WORKERS_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct"
-AI_INPUT_COST_PER_MILLION_USD = "0.28"
-AI_OUTPUT_COST_PER_MILLION_USD = "0.83"
-TURNSTILE_SITE_KEY = "0x4AAAAAACvgcDOc8M6W_8sq"
-
-[[d1_databases]]
-binding = "DB"
-database_name = "counter-linkedin-db"
-database_id = "da577478-265a-4298-b76b-7c38ff4e9608"
-preview_database_id = "da577478-265a-4298-b76b-7c38ff4e9608"
-migrations_dir = "migrations"

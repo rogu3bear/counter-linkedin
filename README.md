@@ -1,195 +1,39 @@
 # CounterLinkedIn
 
-CounterLinkedIn is a single-screen Leptos app that flips polished professional language into brutally honest plain English, and back again when needed.
+**2025 – 2025**
 
-The MVP keeps the `rogu3bear/leptos-cloudflare` full-stack shape intact:
+CounterLinkedIn was a single-screen web app that translated polished professional language into brutally honest plain English — and back again when needed.
 
-- single Rust crate
-- Leptos SSR + hydration
-- Cloudflare Workers runtime
-- Workers AI for generation
-- D1-backed request throttling, generation logging, and spend estimation
+It ran on Leptos + Cloudflare Workers + Workers AI. The AI bill came due. The joke did not generate revenue. The site has been sunsetted — which, in LinkedIn speak, means *we are excited to announce a strategic pivot toward not paying for inference.*
 
-## Modes
+The memorial page lives at [counterlinkedin.com](https://counterlinkedin.com).
 
-- `linkedin_to_counter_linkedin`: polished update in, career-risk honesty out
-- `raw_to_linkedin`: blunt draft in, status-safe rewrite out
-- `job_post_to_honest`: recruiter/job copy in, grounded subtext out
+## What it did
 
-## Required tools
+Three translation modes:
+
+- **LinkedIn → CounterLinkedIn** — polished update in, career-risk honesty out
+- **Raw → LinkedIn** — blunt draft in, status-safe rewrite out
+- **Job Post → Honest** — recruiter copy in, grounded subtext out
+
+## Stack
+
+- **Rust** — single crate, Leptos 0.8 SSR + hydration
+- **Cloudflare Workers** — edge runtime
+- **Workers AI** — Llama 3.1 8B for generation (now disabled)
+- **D1** — rate limiting, generation logging, spend estimation (now removed)
+- **Turnstile** — human check gate (now removed)
+
+## Running locally
+
+The memorial page is a static Leptos app. To build it:
 
 ```bash
-rustup toolchain install stable
 rustup target add wasm32-unknown-unknown
-cargo install cargo-leptos --locked
-```
-
-This repo uses `bunx wrangler`, so you do not need a global Wrangler install.
-
-## Local setup
-
-Run the template checks first:
-
-```bash
-./scripts/check-deps.sh
-./scripts/bootstrap.sh
-```
-
-Create a D1 database for the rate-limit and analytics tables:
-
-```bash
-bunx wrangler d1 create counter-linkedin-db
-```
-
-Copy the returned `database_id` into `wrangler.toml` for both `database_id` and `preview_database_id`.
-
-Apply the migration locally:
-
-```bash
-bunx wrangler d1 migrations apply counter-linkedin-db --local
-```
-
-For production, apply it remotely too:
-
-```bash
-bunx wrangler d1 migrations apply counter-linkedin-db --remote
-```
-
-## Required bindings and env vars
-
-`wrangler.toml` expects these bindings:
-
-- `AI`: Workers AI binding
-- `DB`: D1 database binding
-
-These vars are used by the Worker:
-
-- `WORKERS_AI_MODEL`: Workers AI model name. Default is `@cf/meta/llama-3.1-8b-instruct`
-- `AI_INPUT_COST_PER_MILLION_USD`: per-million input token price used for spend estimation
-- `AI_OUTPUT_COST_PER_MILLION_USD`: per-million output token price used for spend estimation
-
-Security and admin bindings:
-
-- `RATE_LIMIT_SALT`: recommended secret used to hash client IPs before logging
-- `TURNSTILE_SITE_KEY`: public site key rendered in the browser for the Cloudflare human check
-- `TURNSTILE_SECRET`: secret used for server-side `siteverify`
-- `RATE_LIMIT_BYPASS_IPS`: optional comma-separated IPs exempt from the quota and cooldown
-- `CF_ACCESS_TEAM_DOMAIN`: Cloudflare Access team domain or team slug used to fetch the Access JWKS
-- `CF_ACCESS_AUD`: expected Cloudflare Access audience for the stats application
-
-Production note:
-
-- `stats.counterlinkedin.com` is intended to sit behind Cloudflare Access with an allow policy for `@mlnavigator.com`
-- the Worker validates `Cf-Access-Jwt-Assertion` against Cloudflare Access certs and no longer falls back to basic auth
-
-## Local development
-
-Build the Leptos assets:
-
-```bash
 cargo leptos build --release
+bunx wrangler dev
 ```
 
-Then run Wrangler locally:
+## License
 
-```bash
-bunx wrangler dev --remote --ip 127.0.0.1 --port 57581
-```
-
-Use `--remote` because Workers AI runs in Cloudflare, not in the purely local Worker simulator.
-
-## Deploy
-
-```bash
-bunx wrangler deploy
-```
-
-Wrangler runs the configured build command:
-
-1. `cargo leptos build --release`
-2. `worker-build --release --features ssr`
-
-## How Workers AI is wired
-
-The translation endpoint lives at `/api/translate`.
-
-The internal metrics endpoint lives at `/api/admin/metrics` and is intended to be viewed through `stats.counterlinkedin.com`.
-
-Server flow:
-
-1. Validate `mode`, `intensity`, and input length
-2. Apply D1-backed rate limiting in [`src/server/rate_limit.rs`](/Users/star/dev/counter-linkedin/src/server/rate_limit.rs)
-3. Verify the Cloudflare Turnstile token server-side
-4. Build a mode-specific prompt in [`src/api.rs`](/Users/star/dev/counter-linkedin/src/api.rs)
-5. Call the configured Workers AI model through the `AI` binding in [`src/server/translate.rs`](/Users/star/dev/counter-linkedin/src/server/translate.rs)
-6. Return a stable JSON payload:
-
-```json
-{
-  "output": "…",
-  "mode": "linkedin_to_counter_linkedin",
-  "intensity": 70,
-  "warnings": []
-}
-```
-
-Error responses return:
-
-```json
-{
-  "error": {
-    "code": "bad_request",
-    "message": "Paste something first.",
-    "warnings": []
-  }
-}
-```
-
-## Swapping models
-
-Change `WORKERS_AI_MODEL` in [`wrangler.toml`](/Users/star/dev/counter-linkedin/wrangler.toml) or override it per environment with Wrangler vars/secrets.
-
-Keep the model:
-
-- fast enough for an interactive button press
-- compatible with prompt-style text generation
-- cheap enough to tolerate iterative use
-
-If you switch to a model with a different response schema, update the `AiOutput` struct in [`src/server/translate.rs`](/Users/star/dev/counter-linkedin/src/server/translate.rs).
-
-If you switch to a model with different token pricing, update `AI_INPUT_COST_PER_MILLION_USD` and `AI_OUTPUT_COST_PER_MILLION_USD` in [`wrangler.toml`](/Users/star/dev/counter-linkedin/wrangler.toml) or override them per environment.
-
-## Rate limiting and abuse hooks
-
-Current controls:
-
-- input capped at 1,500 characters
-- output trimmed to a compact maximum
-- client disables duplicate submissions while a request is in flight
-- Cloudflare Turnstile human check enforced server-side before generation, with a one-time inline gate on the translator surface
-- D1-backed per-IP cooldown and rolling-window throttle
-- hard cap of 25 runs per rolling 24-hour window per client fingerprint
-- regenerate goes through the same throttle path as generate
-
-The main hook points for future abuse controls are:
-
-- request validation in [`src/api.rs`](/Users/star/dev/counter-linkedin/src/api.rs)
-- rate limiting in [`src/server/rate_limit.rs`](/Users/star/dev/counter-linkedin/src/server/rate_limit.rs)
-- Turnstile enforcement path in [`src/server/state.rs`](/Users/star/dev/counter-linkedin/src/server/state.rs) and [`src/server/translate.rs`](/Users/star/dev/counter-linkedin/src/server/translate.rs)
-
-## Non-obvious choices
-
-- The app uses a direct JSON endpoint instead of Leptos server functions for generation so the Worker can inspect headers for IP-based throttling cleanly.
-- D1 now stores both the throttle ledger and a full generation ledger: input text, output text, mode, token usage, latency, and estimated cost.
-- Cost numbers are estimates computed from Workers AI token usage and the configured per-million prices. They are useful for ops, but they are not a substitute for Cloudflare invoice truth.
-- `stats.counterlinkedin.com` is served by the same Worker. The root path is rewritten to `/metrics`, and the app now validates the Cloudflare Access JWT there instead of offering a basic-auth fallback.
-- Prompt construction stays in shared Rust code so the UI and server agree on mode names, limits, and output expectations.
-
-## Intentionally out of scope
-
-- accounts
-- public gallery
-- payments
-- browser extension
-- saved history UI
-- moderation pipeline beyond the current validation and rate limiting
+[MIT](LICENSE)
