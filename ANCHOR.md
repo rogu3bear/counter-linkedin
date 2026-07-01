@@ -35,7 +35,7 @@ page. If a proposal conflicts with these anchors, the burden is on the proposal.
 - Static build: `cargo leptos build --release` (requires the `wasm32-unknown-unknown` target).
 - Worker bundle build: `./scripts/wrangler-build.sh` (pins `wasm-bindgen` and `worker-build`, applies the start-guard rewrite).
 - Local worker preview: `bunx wrangler dev --remote --ip 127.0.0.1 --port 57581`.
-- Live Cloudflare/account reads, mutation planning, and verification: `cfctl` from `PATH`, e.g. `cfctl standards audit /Users/star/dev/counter-linkedin`. Keep direct Wrangler usage limited to the static build/dev loop.
+- Live Cloudflare/account reads, mutation planning, and verification: `cfctl` from `PATH`, e.g. `cfctl standards audit .`. Keep direct Wrangler usage limited to the static build/dev loop.
 
 ## Decision Questions
 

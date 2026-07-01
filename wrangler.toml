@@ -1,6 +1,7 @@
 name = "counter-linkedin"
 main = "build/index.js"
-compatibility_date = "2026-03-20"
+compatibility_date = "2026-06-29"
+upload_source_maps = true
 routes = [
   { pattern = "counterlinkedin.com", custom_domain = true }
 ]
@@ -10,5 +11,8 @@ command = "./scripts/wrangler-build.sh"
 
 [assets]
 directory = "./target/site"
+
+[observability]
+enabled = true
 
 [vars]

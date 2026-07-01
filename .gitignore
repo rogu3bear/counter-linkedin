@@ -2,6 +2,10 @@ target
 node_modules
 .wrangler
 build
+var
 .playwright-cli
 output
+.env
+.env.*
+!.env.example
 .DS_Store

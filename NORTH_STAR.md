@@ -40,7 +40,7 @@ not active surface.
 - A request to `counterlinkedin.com` returns the memorial page, server-rendered and hydrated, with no binding lookups for AI, D1, or Turnstile.
 - The page degrades gracefully: it is readable and complete even if hydration never runs.
 - The build is reproducible through `cargo leptos build --release` and `./scripts/wrangler-build.sh`, with the `__wbindgen_start` guard intact so reinitialization does not crash production.
-- Cloudflare account state matches a memorial: a static-assets Worker with no paid-inference or secret-backed bindings, confirmed via `cfctl standards audit /Users/star/dev/counter-linkedin`.
+- Cloudflare account state matches a memorial: a static-assets Worker with no paid-inference or secret-backed bindings, confirmed via `cfctl standards audit .`.
 - Docs (`README.md`, `AGENTS.md`, `CLAUDE.md`, this file) describe the memorial, never an active translation service.
 
 ## Scope Boundaries
