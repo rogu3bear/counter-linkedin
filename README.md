@@ -34,6 +34,13 @@ cargo leptos build --release
 bunx wrangler dev
 ```
 
+For live Cloudflare/account checks, use `cfctl` from `PATH` rather than ad hoc
+API calls:
+
+```bash
+cfctl standards audit .
+```
+
 ## License
 
 [MIT](LICENSE)

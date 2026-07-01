@@ -24,7 +24,11 @@ fn main() {
         let mut wasm_hash = None::<String>;
         let mut css_hash = None::<String>;
 
-        for line in content.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        for line in content
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+        {
             if let Some((file, hash)) = line.split_once(':') {
                 match file.trim() {
                     "js" => js_hash = Some(hash.trim().to_string()),
